@@ -7,19 +7,13 @@ services:
       dockerfile: Containerfile
     container_name: pipelineface_web_app
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    network_mode: "host"
     environment:
-      - MONGO_URI=mongodb://mongodb:27017
-      - WHISPER_URL=http://host.containers.internal:9000/asr
-      - OLLAMA_URL=http://host.containers.internal:11434/api/chat
+      - MONGO_URI=mongodb://localhost:27017
+      - WHISPER_URL=http://localhost:9000/asr
+      - OLLAMA_URL=http://localhost:11434/api/chat
     volumes:
       - ./data:/app/data
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - mongodb
 
   mongodb:
     image: mongo:7.0

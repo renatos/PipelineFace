@@ -19,10 +19,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # Copiar os códigos da aplicação
 COPY . .
 
-ENV MONGO_URI="mongodb://mongodb:27017"
-ENV WHISPER_URL="http://host.docker.internal:9000/asr"
-ENV OLLAMA_URL="http://host.docker.internal:11434/api/chat"
+ENV MONGO_URI="mongodb://localhost:27017"
+ENV WHISPER_URL="http://localhost:9000/asr"
+ENV OLLAMA_URL="http://localhost:11434/api/chat"
 
 EXPOSE 8000
 
-CMD ["python3", "web/server.py"]
+CMD ["python3", "-m", "uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
