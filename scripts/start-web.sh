@@ -20,22 +20,19 @@ echo -e "${BLUE}======================================================${NC}"
 echo -e "${BLUE}  🧠 PipelineFace — Aplicação Web & Pipeline (Podman) ${NC}"
 echo -e "${BLUE}======================================================${NC}"
 
-# 1. Garantir que o MongoDB está rodando
-if ! podman ps 2>/dev/null | grep -q "mongo"; then
-    echo -e "${BLUE}Iniciando container do MongoDB...${NC}"
-    podman run -d --name pipelineface_mongodb -p 27017:27017 -v "${PROJECT_DIR}/mongo-data:/data/db" docker.io/library/mongo:7.0 2>/dev/null || true
-    sleep 2
+# 1. Garantir que o MongoDB está rodando (inicia existente ou cria novo se não existir)
+echo -e "${BLUE}Garantindo que o container do MongoDB está ativo...${NC}"
+podman start pipelineface_mongodb 2>/dev/null || podman run -d --name pipelineface_mongodb -p 27017:27017 -v "${PROJECT_DIR}/mongo-data:/data/db" docker.io/library/mongo:7.0 2>/dev/null || true
+sleep 1
+
+# 2. Subir/Reiniciar o container da Aplicação Web com volume montado
+echo -e "${BLUE}Subindo container da aplicação Web (com FFmpeg & Playwright)...${NC}"
+if ! podman image exists pipelineface_app:latest; then
+    podman build -t pipelineface_app:latest .
 fi
 
-# 2. Subir o container da Aplicação Web com o código mapeado via volume (sem necessidade de reconstruir imagem a cada alteração)
-if ! podman ps 2>/dev/null | grep -q "pipelineface_web_app"; then
-    echo -e "${BLUE}Subindo container da aplicação Web (com FFmpeg & Playwright)...${NC}"
-    if ! podman image exists pipelineface_app:latest; then
-        podman build -t pipelineface_app:latest .
-    fi
-    podman rm -f pipelineface_web_app 2>/dev/null || true
-    podman run -d --name pipelineface_web_app --network host -v "${PROJECT_DIR}:/app" pipelineface_app:latest >/dev/null
-fi
+podman rm -f pipelineface_web_app 2>/dev/null || true
+podman run -d --name pipelineface_web_app --network host -v "${PROJECT_DIR}:/app" pipelineface_app:latest >/dev/null
 
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${GREEN}✅ Aplicação Web (FFmpeg + Playwright) e MongoDB ativos!${NC}"
