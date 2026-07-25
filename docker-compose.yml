@@ -4,9 +4,11 @@
 # Serviços em container:
 #   1. scraper   → Coleta mídia de perfis do Facebook (Playwright + yt-dlp)
 #   2. whisper   → Transcrição de áudio (speech-to-text / ASR)
+#   3. mongodb   → Banco de dados de documentos para a aplicação web
 #
-# Processamento de IA (Visão + Texto) e Filtros:
-#   - pipeline   → Executado via Python nativo no host (`python pipeline.py`)
+# Processamento de IA (Visão + Texto) e Aplicação Web:
+#   - pipeline   → Executado via Python nativo (`python3 pipeline.py`)
+#   - web        → Aplicação Web FastAPI + Tailwind CSS (`./scripts/start-web.sh`)
 #   - ollama     → Modelos LLM locais (`moondream` e `qwen2.5:3b`) no host
 # ============================================================
 
@@ -35,7 +37,6 @@ services:
 
   # ----------------------------------------------------------
   # WHISPER: Transcrição de áudio (ASR / Speech-to-Text)
-  # API REST compatível com OpenAI Whisper.
   # ----------------------------------------------------------
   whisper:
     image: docker.io/onerahmet/openai-whisper-asr-webservice:latest
@@ -44,6 +45,19 @@ services:
     environment:
       - ASR_MODEL=base
       - ASR_ENGINE=faster_whisper
+    restart: unless-stopped
+    networks:
+      - pipeline-net
+
+  # ----------------------------------------------------------
+  # MONGODB: Banco de dados para a Aplicação Web
+  # ----------------------------------------------------------
+  mongodb:
+    image: docker.io/library/mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo-data:/data/db
     restart: unless-stopped
     networks:
       - pipeline-net

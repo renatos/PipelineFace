@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PipelineFace — Gestor de Conhecimento SEO</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f6ff',
+              100: '#e0edff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#0f172a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    /* Scrollbar estilizada */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-full flex flex-col antialiased selection:bg-blue-500 selection:text-white">
+
+  <!-- ============================================================ -->
+  # HEADER PRINCIPAL
+  <!-- ============================================================ -->
+  <header class="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl shadow-lg shadow-blue-500/20 ring-1 ring-white/20">
+          <i data-lucide="brain-circuit" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+            PipelineFace <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">v3.0 MongoDB</span>
+          </h1>
+          <p class="text-xs text-slate-400">Gestão Prática de Estratégias & Tutoriais em SEO</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button onclick="syncData()" class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 border border-slate-700 transition duration-150 shadow-sm active:scale-95">
+          <i data-lucide="refresh-cw" class="w-4 h-4 text-blue-400"></i>
+          <span>Sincronizar Mídias</span>
+        </button>
+
+        <button onclick="runPipeline()" class="px-3.5 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 border border-blue-500/30 transition duration-150 shadow-md shadow-blue-600/20 active:scale-95">
+          <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+          <span>Executar Pipeline</span>
+        </button>
+
+        <button onclick="openScraperModal()" class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 border border-slate-700 transition duration-150 active:scale-95">
+          <i data-lucide="bot" class="w-4 h-4 text-emerald-400"></i>
+          <span>Executar Scraper</span>
+        </button>
+
+        <button onclick="openLogsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition" title="Ver Logs do Sistema">
+          <i data-lucide="terminal" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================ -->
+  # CONTEÚDO PRINCIPAL
+  <!-- ============================================================ -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+    <!-- KPI / Status Counter Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm backdrop-blur">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Total Extraído</p>
+          <h3 id="stat-total" class="text-2xl font-bold text-white mt-1">0</h3>
+        </div>
+        <div class="p-3 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20">
+          <i data-lucide="database" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm backdrop-blur">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Pendentes</p>
+          <h3 id="stat-pendentes" class="text-2xl font-bold text-amber-400 mt-1">0</h3>
+        </div>
+        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+          <i data-lucide="clock" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm backdrop-blur">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Em Andamento</p>
+          <h3 id="stat-andamento" class="text-2xl font-bold text-blue-400 mt-1">0</h3>
+        </div>
+        <div class="p-3 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20">
+          <i data-lucide="loader" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm backdrop-blur">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Concluídos</p>
+          <h3 id="stat-concluidos" class="text-2xl font-bold text-emerald-400 mt-1">0</h3>
+        </div>
+        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
+          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Filtros & Busca -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+      
+      <!-- Busca por texto -->
+      <div class="relative w-full md:w-96">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-slate-400"></i>
+        <input type="text" id="input-search" oninput="debounceSearch()" placeholder="Buscar por título, ferramenta ou palavra-chave..."
+               class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+      </div>
+
+      <!-- Filtros de Status e Mídia -->
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+        <!-- Status Filter Pills -->
+        <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+          <button onclick="setFilterStatus('')" id="btn-status-all" class="px-3 py-1.5 rounded-md text-white bg-slate-800 transition">Todos</button>
+          <button onclick="setFilterStatus('pendente')" id="btn-status-pendente" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition">Pendente</button>
+          <button onclick="setFilterStatus('em_andamento')" id="btn-status-em_andamento" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition">Em Andamento</button>
+          <button onclick="setFilterStatus('concluido')" id="btn-status-concluido" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition">Concluído</button>
+        </div>
+
+        <!-- Media Type Filter -->
+        <select id="select-media" onchange="loadStrategies()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 focus:outline-none focus:border-blue-500">
+          <option value="">Todas Mídias</option>
+          <option value="video">📹 Vídeos</option>
+          <option value="image">🖼️ Imagens</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Grid de Estratégias -->
+    <div id="strategies-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Inserido dinamicamente via JS -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="hidden flex flex-col items-center justify-center py-16 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800 text-center">
+      <div class="p-4 bg-slate-800/50 rounded-full text-slate-500 mb-3">
+        <i data-lucide="inbox" class="w-8 h-8"></i>
+      </div>
+      <h3 class="text-base font-semibold text-slate-300">Nenhuma estratégia encontrada</h3>
+      <p class="text-xs text-slate-500 mt-1 max-w-sm">Tente ajustar seus filtros de busca ou sincronize novos arquivos de mídia.</p>
+    </div>
+
+  </main>
+
+  <!-- ============================================================ -->
+  # MODAL DE DETALHES DA ESTRATÉGIA (CHECKLIST + MÍDIA + COMENTÁRIOS)
+  <!-- ============================================================ -->
+  <div id="modal-detail" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div class="flex items-center gap-3">
+          <span id="modal-media-badge" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Vídeo</span>
+          <h2 id="modal-title" class="text-base font-bold text-white truncate max-w-xl">Título da Estratégia</h2>
+        </div>
+        <button onclick="closeModal('modal-detail')" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Grid de 2 Colunas no Desktop) -->
+      <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Coluna Esquerda (Mídia de Entrada + Galeria de Frames) -->
+        <div class="lg:col-span-5 space-y-5 border-b lg:border-b-0 lg:border-r border-slate-800 pb-6 lg:pb-0 lg:pr-6">
+          
+          <!-- Mídia Original de Entrada -->
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+              <i data-lucide="film" class="w-4 h-4 text-blue-400"></i> Mídia de Entrada Original
+            </h4>
+            <div id="modal-media-container" class="rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center">
+              <!-- Inserido dinamicamente: <video> ou <img> -->
+            </div>
+          </div>
+
+          <!-- Quadros / Frames Extraídos -->
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+              <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i> Quadros Salvos (Telas & Gráficos)
+            </h4>
+            <div id="modal-frames-container" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">
+              <!-- Frames inseridos dinamicamente -->
+            </div>
+          </div>
+
+          <!-- Resumo Executivo & Aplicação no Negócio -->
+          <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-3">
+            <div>
+              <h5 class="text-xs font-semibold text-slate-400">Resumo Executivo</h5>
+              <p id="modal-resumo" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
+            </div>
+            <div>
+              <h5 class="text-xs font-semibold text-slate-400">Aplicação Prática no Negócio</h5>
+              <p id="modal-aplicacao" class="text-xs text-emerald-400/90 font-medium mt-1 leading-relaxed"></p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Coluna Direita (Checklist de Passos + Comentários / Problemas) -->
+        <div class="lg:col-span-7 space-y-6 flex flex-col justify-between">
+          
+          <div class="space-y-5">
+            <!-- Header do Progresso -->
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                <i data-lucide="list-checks" class="w-4 h-4 text-emerald-400"></i> Checklist do Tutorial
+              </h4>
+              <!-- Selector de Status -->
+              <select id="modal-select-status" onchange="updateStrategyStatus()" class="bg-slate-950 border border-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                <option value="pendente">⏳ Pendente</option>
+                <option value="em_andamento">🔵 Em Andamento</option>
+                <option value="concluido">✅ Concluído</option>
+              </select>
+            </div>
+
+            <!-- Lista de Passos (Checklist) -->
+            <div id="modal-steps-container" class="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+              <!-- Passos inseridos via JS -->
+            </div>
+          </div>
+
+          <!-- Seção de Comentários / Anotação de Problemas -->
+          <div class="border-t border-slate-800 pt-5 space-y-3">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="message-square" class="w-4 h-4 text-amber-400"></i> Notas & Problemas Encontrados
+            </h4>
+
+            <!-- Form para novo comentário -->
+            <div class="flex gap-2">
+              <input type="text" id="input-comment" placeholder="Digite uma nota sobre a aplicação ou erro encontrado..."
+                     class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500">
+              <button onclick="addComment()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                <i data-lucide="send" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+
+            <!-- Histórico de Comentários -->
+            <div id="modal-comments-container" class="space-y-2 max-h-36 overflow-y-auto pr-1">
+              <!-- Comentários inseridos via JS -->
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  # MODAL DO SCRAPER
+  <!-- ============================================================ -->
+  <div id="modal-scraper" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="bot" class="w-5 h-5 text-emerald-400"></i> Executar Facebook Scraper
+        </h3>
+        <button onclick="closeModal('modal-scraper')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">URL do Perfil Alvo</label>
+          <input type="text" id="scraper-url" placeholder="https://www.facebook.com/perfil.alvo"
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="flex gap-4 text-xs text-slate-300">
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" id="scraper-only-videos" class="rounded bg-slate-950 border-slate-800 text-blue-600">
+            Apenas Vídeos
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" id="scraper-only-images" class="rounded bg-slate-950 border-slate-800 text-blue-600">
+            Apenas Imagens
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('modal-scraper')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:bg-slate-800">Cancelar</button>
+        <button onclick="startScraper()" class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white">Iniciar Coleta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  # MODAL DE LOGS DO SISTEMA
+  <!-- ============================================================ -->
+  <div id="modal-logs" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="terminal" class="w-5 h-5 text-blue-400"></i> Terminal de Execução do Pipeline
+        </h3>
+        <button onclick="closeModal('modal-logs')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div id="logs-terminal" class="bg-slate-950 p-4 rounded-xl font-mono text-xs text-emerald-400 h-80 overflow-y-auto border border-slate-800 space-y-1">
+        <p class="text-slate-500">[Nenhum log ativo no momento]</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================ -->
+  # SCRIPTS JAVASCRIPT
+  <!-- ============================================================ -->
+  <script>
+    let currentFilterStatus = '';
+    let currentSearchTimeout = None;
+    let activeBasename = null;
+    let strategiesCache = [];
+
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadStrategies();
+      setInterval(checkProcessStatus, 3000);
+    });
+
+    // Carregar Estratégias do MongoDB
+    async function loadStrategies() {
+      const search = document.getElementById('input-search').value.trim();
+      const mediaType = document.getElementById('select-media').value;
+      
+      let url = `/api/strategies?`;
+      if (currentFilterStatus) url += `status=${currentFilterStatus}&`;
+      if (search) url += `search=${encodeURIComponent(search)}&`;
+      if (mediaType) url += `media_type=${mediaType}&`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        strategiesCache = data.strategies || [];
+        renderGrid(strategiesCache);
+        updateStats(strategiesCache);
+      } catch (err) {
+        console.error('Erro ao carregar estratégias:', err);
+      }
+    }
+
+    // Renderizar Cards no Grid
+    function renderGrid(strategies) {
+      const grid = document.getElementById('strategies-grid');
+      const empty = document.getElementById('empty-state');
+      grid.innerHTML = '';
+
+      if (!strategies || strategies.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      strategies.forEach(item => {
+        const knowledge = item.seo_knowledge || {};
+        const impl = item.user_implementation || {};
+        const input = item.input_file || {};
+
+        const title = knowledge.titulo_estrategia || item.basename;
+        const resumo = knowledge.resumo_executivo || 'Sem resumo disponível';
+        const ferramentas = knowledge.ferramentas_e_telas_utilizadas || [];
+        const status = impl.status || 'pendente';
+
+        const totalSteps = (knowledge.passo_a_passo_detalhado || []).length;
+        const doneSteps = (impl.completed_steps || []).length;
+        const progressPct = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : 0;
+
+        // Status Badge Styling
+        let statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">⏳ Pendente</span>`;
+        if (status === 'em_andamento') {
+          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">🔵 Em Andamento</span>`;
+        } else if (status === 'concluido') {
+          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✅ Concluído</span>`;
+        }
+
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-slate-700 transition duration-200 shadow-md hover:shadow-xl group';
+        card.innerHTML = `
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-slate-400 flex items-center gap-1">
+                ${input.type === 'video' ? '📹 Vídeo' : '🖼️ Imagem'}
+              </span>
+              ${statusBadge}
+            </div>
+
+            <h3 class="text-sm font-bold text-white group-hover:text-blue-400 transition line-clamp-2 leading-snug">
+              ${title}
+            </h3>
+
+            <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+              ${resumo}
+            </p>
+
+            <!-- Tags Ferramentas -->
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              ${ferramentas.slice(0, 3).map(f => `<span class="px-2 py-0.5 rounded bg-slate-950 text-[10px] font-medium text-slate-300 border border-slate-800">${f}</span>`).join('')}
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-800/80 mt-4 space-y-3">
+            <!-- Barra de Progresso do Checklist -->
+            <div>
+              <div class="flex justify-between text-[11px] font-medium text-slate-400 mb-1">
+                <span>Progresso</span>
+                <span>${doneSteps}/${totalSteps} passos (${progressPct}%)</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-1.5 border border-slate-800 overflow-hidden">
+                <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+
+            <button onclick="openDetailModal('${item.basename}')" class="w-full py-2 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 border border-slate-700 hover:border-blue-500">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+              <span>Ver Detalhes & Mídia</span>
+            </button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    // Atualizar Contadores de KPI
+    function updateStats(strategies) {
+      document.getElementById('stat-total').innerText = strategies.length;
+      document.getElementById('stat-pendentes').innerText = strategies.filter(s => (s.user_implementation?.status || 'pendente') === 'pendente').length;
+      document.getElementById('stat-andamento').innerText = strategies.filter(s => s.user_implementation?.status === 'em_andamento').length;
+      document.getElementById('stat-concluidos').innerText = strategies.filter(s => s.user_implementation?.status === 'concluido').length;
+    }
+
+    // Modal de Detalhes Completo
+    async function openDetailModal(basename) {
+      activeBasename = basename;
+      try {
+        const res = await fetch(`/api/strategies/${basename}`);
+        const item = await res.json();
+
+        const knowledge = item.seo_knowledge || {};
+        const impl = item.user_implementation || {};
+        const input = item.input_file || {};
+
+        document.getElementById('modal-title').innerText = knowledge.titulo_estrategia || item.basename;
+        document.getElementById('modal-media-badge').innerText = input.type === 'video' ? '📹 Vídeo Original' : '🖼️ Imagem Original';
+        document.getElementById('modal-resumo').innerText = knowledge.resumo_executivo || 'Sem resumo.';
+        document.getElementById('modal-aplicacao').innerText = knowledge.aplicacao_no_negocio || 'Aplique essa técnica para ranquear melhor.';
+        document.getElementById('modal-select-status').value = impl.status || 'pendente';
+
+        // Render Mídia de Entrada
+        const mediaContainer = document.getElementById('modal-media-container');
+        mediaContainer.innerHTML = '';
+        if (input.media_url) {
+          if (input.type === 'video') {
+            mediaContainer.innerHTML = `<video controls src="${input.media_url}" class="w-full h-full object-contain"></video>`;
+          } else {
+            mediaContainer.innerHTML = `<img src="${input.media_url}" class="w-full h-full object-contain">`;
+          }
+        } else {
+          mediaContainer.innerHTML = `<div class="text-xs text-slate-500 p-4 text-center">Mídia original não disponível</div>`;
+        }
+
+        // Render Frames Extraídos
+        const framesContainer = document.getElementById('modal-frames-container');
+        framesContainer.innerHTML = '';
+        const savedFrames = item.content?.saved_frames || [];
+        if (savedFrames.length > 0) {
+          savedFrames.forEach(f => {
+            const img = document.createElement('img');
+            img.src = f.url;
+            img.className = 'w-full h-20 object-cover rounded-lg border border-slate-800 cursor-pointer hover:opacity-80 transition';
+            img.onclick = () => window.open(f.url, '_blank');
+            framesContainer.appendChild(img);
+          });
+        } else {
+          framesContainer.innerHTML = `<p class="col-span-2 text-[11px] text-slate-500 p-2 text-center">Nenhum quadro de conteúdo extraído.</p>`;
+        }
+
+        // Render Steps Checklist
+        renderStepsChecklist(knowledge.passo_a_passo_detalhado || [], impl.completed_steps || []);
+
+        // Render Comentários
+        renderComments(impl.comments || []);
+
+        document.getElementById('modal-detail').classList.remove('hidden');
+      } catch (err) {
+        console.error('Erro ao abrir detalhes:', err);
+      }
+    }
+
+    // Renderizar Passos com Checkbox Interativo
+    function renderStepsChecklist(steps, completedSteps) {
+      const container = document.getElementById('modal-steps-container');
+      container.innerHTML = '';
+
+      steps.forEach((stepText, idx) => {
+        const isChecked = completedSteps.includes(idx);
+        const div = document.createElement('div');
+        div.className = `flex items-start gap-3 p-3 rounded-xl border transition ${isChecked ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-slate-950 border-slate-800/80 text-slate-300'}`;
+        div.innerHTML = `
+          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})"
+                 class="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-blue-500 cursor-pointer">
+          <label class="text-xs leading-relaxed cursor-pointer font-medium">${stepText}</label>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Alternar Passo Concluído no MongoDB
+    async function toggleStep(stepIndex) {
+      if (!activeBasename) return;
+      try {
+        const res = await fetch(`/api/strategies/${activeBasename}/step`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step_index: stepIndex })
+        });
+        const data = await res.json();
+        document.getElementById('modal-select-status').value = data.status;
+        loadStrategies();
+      } catch (err) {
+        console.error('Erro ao alternar passo:', err);
+      }
+    }
+
+    // Atualizar Status Geral
+    async function updateStrategyStatus() {
+      if (!activeBasename) return;
+      const status = document.getElementById('modal-select-status').value;
+      try {
+        await fetch(`/api/strategies/${activeBasename}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: status })
+        });
+        loadStrategies();
+      } catch (err) {
+        console.error('Erro ao atualizar status:', err);
+      }
+    }
+
+    // Renderizar Comentários
+    function renderComments(comments) {
+      const container = document.getElementById('modal-comments-container');
+      container.innerHTML = '';
+
+      if (comments.length === 0) {
+        container.innerHTML = `<p class="text-[11px] text-slate-500 text-center py-2">Nenhuma observação ou problema anotado ainda.</p>`;
+        return;
+      }
+
+      comments.forEach(c => {
+        const dateStr = new Date(c.created_at).toLocaleString('pt-BR');
+        const div = document.createElement('div');
+        div.className = 'bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1';
+        div.innerHTML = `
+          <div class="flex justify-between text-[10px] text-slate-400">
+            <span class="font-semibold text-amber-400">${c.author || 'Usuário'}</span>
+            <span>${dateStr}</span>
+          </div>
+          <p class="text-slate-300 leading-snug">${c.text}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Adicionar Comentário no MongoDB
+    async function addComment() {
+      if (!activeBasename) return;
+      const input = document.getElementById('input-comment');
+      const text = input.value.trim();
+      if (!text) return;
+
+      try {
+        const res = await fetch(`/api/strategies/${activeBasename}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text, author: 'Sócio/Equipe' })
+        });
+        if (res.ok) {
+          input.value = '';
+          openDetailModal(activeBasename);
+        }
+      } catch (err) {
+        console.error('Erro ao adicionar comentário:', err);
+      }
+    }
+
+    // Sincronizar Mídias com MongoDB
+    async function syncData() {
+      try {
+        const res = await fetch('/api/sync', { method: 'POST' });
+        const data = await res.json();
+        alert(`Sincronização concluída! ${data.data.imported} mídias atualizadas no MongoDB.`);
+        loadStrategies();
+      } catch (err) {
+        alert('Erro na sincronização: ' + err);
+      }
+    }
+
+    // Executar Pipeline
+    async function runPipeline() {
+      try {
+        const res = await fetch('/api/run-pipeline', { method: 'POST' });
+        if (res.ok) {
+          openLogsModal();
+        } else {
+          const data = await res.json();
+          alert(data.detail);
+        }
+      } catch (err) {
+        alert('Erro ao iniciar pipeline: ' + err);
+      }
+    }
+
+    // Executar Scraper
+    async function startScraper() {
+      const url = document.getElementById('scraper-url').value.trim();
+      if (!url) {
+        alert('Digite a URL do perfil');
+        return;
+      }
+      const onlyVideos = document.getElementById('scraper-only-videos').checked;
+      const onlyImages = document.getElementById('scraper-only-images').checked;
+
+      try {
+        const res = await fetch('/api/run-scraper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_url: url, only_videos: onlyVideos, only_images: onlyImages })
+        });
+        if (res.ok) {
+          closeModal('modal-scraper');
+          openLogsModal();
+        }
+      } catch (err) {
+        alert('Erro ao iniciar scraper: ' + err);
+      }
+    }
+
+    // Status do Processo em Tempo Real
+    async function checkProcessStatus() {
+      try {
+        const res = await fetch('/api/process-status');
+        const data = await res.json();
+        const terminal = document.getElementById('logs-terminal');
+        if (data.running && data.logs.length > 0) {
+          terminal.innerHTML = data.logs.map(l => `<p>${l}</p>`).join('');
+          terminal.scrollTop = terminal.scrollHeight;
+        }
+      } catch (e) {}
+    }
+
+    // Filtros e Utilidades
+    function setFilterStatus(status) {
+      currentFilterStatus = status;
+      ['all', 'pendente', 'em_andamento', 'concluido'].forEach(s => {
+        const btn = document.getElementById(`btn-status-${s}`);
+        if (btn) {
+          if ((s === 'all' && !status) || s === status) {
+            btn.className = 'px-3 py-1.5 rounded-md text-white bg-slate-800 transition';
+          } else {
+            btn.className = 'px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+          }
+        }
+      });
+      loadStrategies();
+    }
+
+    function debounceSearch() {
+      clearTimeout(currentSearchTimeout);
+      currentSearchTimeout = setTimeout(loadStrategies, 300);
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+    function openScraperModal() {
+      document.getElementById('modal-scraper').classList.remove('hidden');
+    }
+    function openLogsModal() {
+      document.getElementById('modal-logs').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

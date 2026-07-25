@@ -1,19 +1,24 @@
-# 🧠 PipelineFace — Extração de Conhecimento de Perfil Facebook
+# 🧠 PipelineFace — Gestor de Conhecimento SEO (Tailwind CSS + MongoDB)
 
-Pipeline local em **Python Nativo** para extrair conhecimento estruturado em SEO (transcrições, análise visual, tutorial passo a passo e termos chave) a partir de vídeos e imagens de perfis do Facebook, utilizando modelos de IA locais (Whisper, Moondream e Qwen2.5:3b).
+Aplicação Web e Pipeline local em **Python Nativo + MongoDB** para extrair, visualizar, gerenciar e implementar estratégias de SEO extraídas de perfis do Facebook.
 
 ---
 
-## 📋 Visão Geral
+## 📋 Visão Geral & Recursos da Interface Web
 
-O PipelineFace automatiza a coleta e a extração de conhecimento a partir de posts e vídeos do Facebook:
-1. **Scraper (Playwright + yt-dlp):** Coleta mídias de perfis configurados.
-2. **Pipeline Python (`pipeline.py`):**
-   - **Extração de Mídia:** Separa o áudio via FFmpeg e extrai frames temporais.
-   - **Transcrição de Áudio:** Transcreve a fala com o Whisper ASR.
-   - **Visão & Filtro Inteligente:** Usa `moondream` para descrever telas de sistemas, slides e buscas no Google. **Filtra e descarta automaticamente frames que contêm apenas o apresentador (*talking head*)**.
-   - **Extração de SEO:** Utiliza o `qwen2.5:3b` para estruturar um tutorial passo a passo e conhecimento em SEO.
-   - **Saída Estruturada:** Grava documentos `.json` e salva quadros de conteúdo em `data/output/`.
+A plataforma oferece uma interface rica desenvolvida com **Tailwind CSS (Dark Mode / Glassmorphism)** conectada ao **MongoDB**:
+
+1. **Reprodutor de Mídias de Entrada:**
+   - Player de vídeo HTML5 integrado com streaming HTTP Range para assistir ao vídeo original de entrada (`data/input/videos/`).
+   - Visualizador de alta resolução para imagens originais (`data/input/images/`).
+2. **Galeria de Frames & Telas Extraídas:**
+   - Exibição em carrossel/grid dos quadros chave contendo telas do sistema, gráficos de SEO, buscas do Google e slides salvos pelo Ollama Vision (`data/output/frames/`).
+3. **Checklist Interativo de Implementação:**
+   - Cada passo do tutorial de SEO gerado possui uma caixa de seleção. O progresso (ex: `3/5 passos`) e o status (*Pendente*, *Em Andamento*, *Concluído*) são salvos no MongoDB em tempo real.
+4. **Notas & Registro de Problemas:**
+   - Seção de comentários para anotar dificuldades encontradas, adaptações necessárias e soluções aplicadas na sua empresa.
+5. **Painel de Controle de Processos:**
+   - Botões na interface para **Sincronizar Mídias**, **Executar o Pipeline Python** e **Disparar o Scraper** com modal de logs de terminal em tempo real.
 
 ---
 
@@ -29,79 +34,82 @@ flowchart TD
     F -->|Somente Rosto| G[Descartar Frame]
     F -->|Telas/Slides/Texto| H[Salvar Frame & OCR]
     E & H -->|Ollama Qwen2.5:3b| I[LLM Extrator de SEO]
-    I --> J(Saída Estruturada JSON em data/output/)
+    I --> J(JSON em data/output/)
+    J & B --> K[FastAPI Backend - web/server.py]
+    K <--> L[(MongoDB - Base de Dados)]
+    K <--> M[Interface Web Tailwind CSS - http://localhost:8000]
 ```
 
 ---
 
 ## 🚀 Como Executar
 
-### 1. Iniciar os Serviços Básicos (Scraper & Whisper)
+### 1. Iniciar a Aplicação Web e Banco de Dados
+Para subir a aplicação web complete com o MongoDB:
 ```bash
-podman-compose up -d
+./scripts/start-web.sh
 ```
-
-### 2. Coletar Mídias do Facebook (Opcional)
-```bash
-# Login interativo (primeira vez)
-./scripts/scrape.sh --target https://www.facebook.com/perfil.alvo --login
-
-# Execuções subsequentes
-./scripts/scrape.sh --target https://www.facebook.com/perfil.alvo --only-videos
-```
-
-### 3. Executar o Pipeline de Conhecimento em Python
-```bash
-# Executar uma vez sobre todos os arquivos pendentes em data/input/
-python3 pipeline.py
-
-# Ou executar em modo contínuo (monitora novos arquivos a cada 30s):
-python3 pipeline.py --watch --interval 30
-```
+Acesse no seu navegador: **[http://localhost:8000](http://localhost:8000)**
 
 ---
 
-## 📊 Formato de Saída (JSON)
+### 2. Executar o Pipeline via Terminal ou Interface Web
+- **Via Interface Web:** Clique no botão **"Executar Pipeline"** ou **"Sincronizar Mídias"** no topo da tela.
+- **Via Terminal (uma vez):**
+  ```bash
+  python3 pipeline.py
+  ```
+- **Via Terminal (modo contínuo daemon a cada 30s):**
+  ```bash
+  python3 pipeline.py --watch --interval 30
+  ```
 
-Os arquivos finais são salvos em `data/output/<baseName>.json`:
+---
 
+## 🔍 Estrutura do Documento no MongoDB
+
+Coleção: `seo_knowledge`
 ```json
 {
-  "metadata": {
-    "source": "facebook_profile_seo",
-    "pipeline_version": "3.0.0 (Python Nativo)",
-    "processed_at": "2026-07-25T18:00:00.000Z"
-  },
-  "source_file": {
-    "filename": "Vídeo_exemplo.mp4",
+  "basename": "Vídeo_1037805435633443",
+  "input_file": {
+    "filename": "Vídeo_1037805435633443.mp4",
     "type": "video",
-    "extension": ".mp4",
-    "path": "/data/input/videos/Vídeo_exemplo.mp4",
-    "duration_seconds": 73
+    "media_url": "/api/media/input/videos/Vídeo_1037805435633443.mp4",
+    "duration_seconds": 73,
+    "size_bytes": 10485760
   },
   "content": {
-    "transcription": "Em prompt que te diz exatamente qual sapato focar...",
+    "transcription": "Em prompt que te diz exatamente...",
     "visual_description": "Tela demonstrando busca no Google Trends...",
-    "saved_frame_files": [
-      "/data/output/frames/Vídeo_exemplo/frame_0003.jpg"
+    "saved_frames": [
+      {
+        "filename": "frame_0003.jpg",
+        "url": "/api/media/frames/Vídeo_1037805435633443/frame_0003.jpg"
+      }
     ]
   },
   "seo_knowledge": {
     "titulo_estrategia": "Como Focar o SEO em um E-Commerce",
-    "resumo_executivo": "Determine a categoria e termos focais para SEO...",
-    "passo_a_passo_detalhado": [
-      "Passo 1: Acesse o Google Trends...",
-      "Passo 2: Clique em Explorar..."
-    ],
-    "ferramentas_e_telas_utilizadas": ["Google Trends", "Gemini"],
-    "termos_e_exemplos_usados": ["sapato feminino confortável"],
-    "aplicacao_no_negocio": "Utilize os termos focais para criar conteúdo relevante..."
+    "passo_a_passo_detalhado": ["Passo 1: Acesse...", "Passo 2: Clique..."],
+    "ferramentas_e_telas_utilizadas": ["Google Trends", "Gemini"]
+  },
+  "user_implementation": {
+    "status": "em_andamento",
+    "completed_steps": [0],
+    "comments": [
+      {
+        "id": "c1",
+        "text": "Tive dificuldade na versão mobile, usei desktop.",
+        "created_at": "2026-07-25T18:50:00Z"
+      }
+    ]
   }
 }
 ```
 
 ---
 
-## 🔍 Diagnostics & Checagens
+## 🔍 Comandos de Diagnóstico
 
-- `./scripts/check-status.sh` - Exibe status dos containers, API Ollama local e contagem de arquivos pendentes/processados.
+- `./scripts/check-status.sh` - Verifica status do MongoDB, Whisper, Scraper e API do Ollama.
