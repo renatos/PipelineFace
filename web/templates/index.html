@@ -542,25 +542,45 @@
           framesContainer.appendChild(img);
         });
 
-        renderStepsChecklist(knowledge.passo_a_passo_detalhado || [], impl.completed_steps || []);
+        const savedFrames = item.content?.saved_frames || [];
+        renderStepsChecklist(knowledge.passo_a_passo_detalhado || [], impl.completed_steps || [], savedFrames);
         renderComments(impl.comments || []);
         document.getElementById('modal-detail').classList.remove('hidden');
       } catch (err) { console.error(err); }
     }
 
-    function renderStepsChecklist(steps, completedSteps) {
+    function renderStepsChecklist(steps, completedSteps, savedFrames = []) {
       const container = document.getElementById('modal-steps-container');
       container.innerHTML = '';
       steps.forEach((stepText, idx) => {
         const isChecked = completedSteps.includes(idx);
+        const frame = (savedFrames && savedFrames.length > 0) ? (savedFrames[idx] || savedFrames[idx % savedFrames.length]) : null;
+
         const div = document.createElement('div');
-        div.className = `flex items-start gap-3 p-3 rounded-xl border transition ${isChecked ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-slate-950 border-slate-800/80 text-slate-300'}`;
+        div.className = `p-3 rounded-xl border transition space-y-2 ${isChecked ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-slate-950 border-slate-800/80 text-slate-300'}`;
+        
+        let frameButtonHtml = '';
+        if (frame && frame.url) {
+          frameButtonHtml = `
+            <div class="flex items-center gap-2 pt-0.5">
+              <button type="button" onclick="window.open('${frame.url}', '_blank')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                <span>Ver Tela / Frame (${frame.filename || 'Quadro'})</span>
+              </button>
+            </div>
+          `;
+        }
+
         div.innerHTML = `
-          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})" class="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 cursor-pointer">
-          <label class="text-xs leading-relaxed cursor-pointer font-medium">${stepText}</label>
+          <div class="flex items-start gap-3">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})" class="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 cursor-pointer">
+            <label class="text-xs leading-relaxed cursor-pointer font-medium flex-1">${stepText}</label>
+          </div>
+          ${frameButtonHtml}
         `;
         container.appendChild(div);
       });
+      lucide.createIcons();
     }
 
     async function toggleStep(stepIndex) {

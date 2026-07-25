@@ -27,12 +27,14 @@ if ! podman ps 2>/dev/null | grep -q "mongo"; then
     sleep 2
 fi
 
-# 2. Subir o container da Aplicação Web
+# 2. Subir o container da Aplicação Web com o código mapeado via volume (sem necessidade de reconstruir imagem a cada alteração)
 if ! podman ps 2>/dev/null | grep -q "pipelineface_web_app"; then
     echo -e "${BLUE}Subindo container da aplicação Web (com FFmpeg & Playwright)...${NC}"
-    podman build -t pipelineface_app:latest . >/dev/null
+    if ! podman image exists pipelineface_app:latest; then
+        podman build -t pipelineface_app:latest .
+    fi
     podman rm -f pipelineface_web_app 2>/dev/null || true
-    podman run -d --name pipelineface_web_app --network host -v "${PROJECT_DIR}/data:/app/data" pipelineface_app:latest >/dev/null
+    podman run -d --name pipelineface_web_app --network host -v "${PROJECT_DIR}:/app" pipelineface_app:latest >/dev/null
 fi
 
 echo -e "${GREEN}======================================================${NC}"

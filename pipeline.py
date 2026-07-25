@@ -250,20 +250,48 @@ class KnowledgePipeline:
             payload["format"] = "json"
 
         req_data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            self.ollama_url,
-            data=req_data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
+        max_retries = 3
+        last_error = None
 
+        for attempt in range(1, max_retries + 1):
+            try:
+                req = urllib.request.Request(
+                    self.ollama_url,
+                    data=req_data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=600) as resp:
+                    res = json.loads(resp.read().decode("utf-8"))
+                    return res.get("message", {}).get("content", "").strip()
+            except Exception as e:
+                last_error = e
+                console.print(f"[yellow]⚠️ Tentativa {attempt}/{max_retries} falhou para Ollama ({model}): {e}. Tentando novamente...[/yellow]")
+                time.sleep(5 * attempt)
+
+        console.print(f"[red]❌ Erro na requisição ao Ollama ({model}): {last_error}[/red]")
+        raise RuntimeError(f"Ollama API ({model}) falhou após {max_retries} tentativas: {last_error}")
+
+    def is_presenter_face(self, image_path: Path) -> bool:
+        """Detecta de forma determinística com OpenCV se o frame é um rosto de apresentador em primeiro plano."""
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-                return res.get("message", {}).get("content", "").strip()
-        except Exception as e:
-            console.print(f"[red]❌ Erro na requisição ao Ollama ({model}): {e}[/red]")
-            raise RuntimeError(f"Ollama API ({model}) falhou: {e}")
+            import cv2
+            img = cv2.imread(str(image_path))
+            if img is None: return False
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(90, 90))
+            
+            img_area = img.shape[0] * img.shape[1]
+            for (x, y, w, h) in faces:
+                face_area = w * h
+                # Se o rosto ocupa mais de 10% do frame, é uma pessoa/apresentador (talking head)!
+                if (face_area / img_area) > 0.10:
+                    return True
+            return False
+        except Exception:
+            return False
 
     def analyze_and_filter_frames(self, frame_paths: list[Path], target_frames_dir: Path) -> tuple[list[dict], list[str]]:
         descriptions = []
@@ -282,16 +310,20 @@ class KnowledgePipeline:
         for frame_path in frame_paths:
             frame_filename = frame_path.name
 
+            # 1. Checagem determinística OpenCV (ignora rostos de apresentadores)
+            if self.is_presenter_face(frame_path):
+                console.print(f"  [yellow]🙈 Frame ignorado (rosto de apresentador detectado via OpenCV): {frame_filename}[/yellow]")
+                continue
+
+            # 2. Checagem semântica Moondream (garante que contém tela/slide/sistema/texto)
             prompt_classify = (
-                "Aponte se esta imagem é apenas a pessoa/apresentador ou se é uma tela de computador/slide/texto. "
-                "Responda EXATAMENTE uma única palavra: 'ROSTO' (se for apenas o apresentador) ou 'CONTEUDO' (se tiver tela, slides, texto ou busca)."
+                "Descreva o que está visível nesta imagem em português. Ela mostra uma tela de computador, slide, busca do Google, site ou gráfico?"
             )
-            classification = self.query_ollama("moondream", prompt_classify, image_path=frame_path).upper()
-
-            is_rosto = ("ROSTO" in classification) and ("CONTEUDO" not in classification)
-
-            if is_rosto:
-                console.print(f"  [yellow]🙈 Frame ignorado (apenas rosto): {frame_filename}[/yellow]")
+            desc_classify = self.query_ollama("moondream", prompt_classify, image_path=frame_path).lower()
+            
+            is_screen = any(kw in desc_classify for kw in ["tela", "slide", "gráfico", "grafico", "google", "busca", "texto", "sistema", "site", "computador", "navegador", "página", "pagina", "tabela", "código", "codigo", "menu"])
+            if not is_screen:
+                console.print(f"  [yellow]🙈 Frame ignorado (sem tela ou gráfico de conteúdo): {frame_filename}[/yellow]")
                 continue
 
             target_frames_dir.mkdir(parents=True, exist_ok=True)

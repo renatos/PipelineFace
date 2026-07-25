@@ -1028,19 +1028,33 @@ Exemplos:
         console.print("\n[red]❌ É necessário especificar --target com a URL do perfil.[/red]")
         sys.exit(1)
 
-    # Coletar URLs
-    scraper.collect_media()
+    send_telemetry_event(scraper.run_id, "SCRAPE_START", status="in_progress", target_url=args.target, message=f"Iniciando coleta para {args.target}")
 
-    # Download
-    if not args.no_download:
-        if not args.only_images:
-            scraper.download_videos()
-        if not args.only_videos:
-            scraper.download_images()
+    try:
+        # Coletar URLs
+        send_telemetry_event(scraper.run_id, "COLLECT_MEDIA", status="in_progress", target_url=args.target, message=f"Coletando mídia em {args.target}")
+        scraper.collect_media()
 
-    # Salvar metadados e resumo
-    scraper.save_metadata()
-    scraper.print_summary()
+        # Download
+        if not args.no_download:
+            if not args.only_images:
+                send_telemetry_event(scraper.run_id, "DOWNLOAD_VIDEOS", status="in_progress", target_url=args.target, message="Baixando vídeos coletados")
+                scraper.download_videos()
+            if not args.only_videos:
+                send_telemetry_event(scraper.run_id, "DOWNLOAD_IMAGES", status="in_progress", target_url=args.target, message="Baixando imagens coletadas")
+                scraper.download_images()
+
+        # Salvar metadados e resumo
+        scraper.save_metadata()
+        scraper.print_summary()
+        send_telemetry_event(scraper.run_id, "SCRAPE_COMPLETE", status="completed", target_url=args.target, message=f"Coleta e download concluídos para {args.target}")
+
+    except Exception as e:
+        import traceback
+        err_msg = str(e)
+        err_trace = traceback.format_exc()
+        send_telemetry_event(scraper.run_id, "ERROR", status="error", target_url=args.target, message=f"Falha na raspagem: {err_msg}", error_details=err_trace)
+        raise e
 
 
 if __name__ == "__main__":
