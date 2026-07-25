@@ -97,7 +97,7 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def index(request: Request):
-        return templates.TemplateResponse("index.html", {"request": request})
+        return templates.TemplateResponse(request=request, name="index.html")
 
     # Executar sincronização inicial ao iniciar
     try:
