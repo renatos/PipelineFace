@@ -2,23 +2,7 @@
 """
 PipelineFace — Pipeline de Extração de Conhecimento 100% Python
 ===============================================================
-Processa vídeos e imagens coletados, realizando:
-  1. Extração de áudio e frames via FFmpeg
-  2. Transcrição de áudio via Whisper ASR
-  3. Análise visual de frames via Ollama (Moondream)
-  4. Filtragem inteligente de rostos (descarta apresentadores/talking head)
-  5. Extração de conhecimento em SEO via Ollama (Qwen2.5:3b)
-  6. Salvamento do contrato JSON estruturado e frames em data/output/
-
-Uso:
-  # Executar uma vez sobre os arquivos pendentes:
-  python pipeline.py
-
-  # Modo contínuo (daemon a cada 30 segundos):
-  python pipeline.py --watch --interval 30
-
-  # Processar um arquivo específico:
-  python pipeline.py --file data/input/videos/exemplo.mp4
+Processa vídeos e imagens coletados com telemetria via Webhooks e relatórios de erro.
 """
 
 import argparse
@@ -30,16 +14,16 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 # Configurações do Rich para logs visuais
 try:
     from rich.console import Console
-    from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
     console = Console()
 except ImportError:
     class Console:
@@ -51,15 +35,47 @@ except ImportError:
             self.print(*args, **kwargs)
     console = Console()
 
-# ============================================================
-# Configurações de URLs e Diretórios
-# ============================================================
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parent
 WHISPER_URL = os.environ.get("WHISPER_URL", "http://localhost:9000/asr")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "http://localhost:8000/api/webhooks/execution-event")
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+
+def send_telemetry_event(
+    run_id: str,
+    step: str,
+    status: str = "info",
+    filename: str = None,
+    message: str = "",
+    metrics: dict = None,
+    error_details: str = None
+):
+    """Envia um evento de telemetria ou log de erro para a API Web (Webhook)."""
+    try:
+        payload = {
+            "run_id": run_id,
+            "source": "pipeline",
+            "step": step,
+            "status": status,
+            "filename": filename,
+            "message": message,
+            "metrics": metrics or {},
+            "error_details": error_details
+        }
+        req_data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            WEBHOOK_URL,
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            pass
+    except Exception:
+        pass  # Fallback se a Web API não estiver rodando
 
 
 class KnowledgePipeline:
@@ -72,6 +88,7 @@ class KnowledgePipeline:
         self.project_root = Path(project_root)
         self.whisper_url = whisper_url
         self.ollama_url = ollama_url
+        self.run_id = str(uuid.uuid4())[:8]
 
         self.input_videos_dir = self.project_root / "data" / "input" / "videos"
         self.input_images_dir = self.project_root / "data" / "input" / "images"
@@ -80,7 +97,6 @@ class KnowledgePipeline:
         self.processing_audio_dir = self.project_root / "data" / "processing" / "audio"
         self.processing_frames_dir = self.project_root / "data" / "processing" / "frames"
 
-        # Garantir estrutura de diretórios
         for d in [
             self.input_videos_dir,
             self.input_images_dir,
@@ -91,11 +107,7 @@ class KnowledgePipeline:
         ]:
             d.mkdir(parents=True, exist_ok=True)
 
-    # --------------------------------------------------------
-    # Verificação de Mídias Já Processadas
-    # --------------------------------------------------------
     def get_processed_basenames(self) -> set[str]:
-        """Retorna o conjunto de nomes de arquivos já processados (JSONs em output)."""
         processed = set()
         if self.output_dir.exists():
             for f in self.output_dir.glob("*.json"):
@@ -103,48 +115,32 @@ class KnowledgePipeline:
         return processed
 
     def get_pending_files(self) -> list[dict]:
-        """Lista todos os arquivos de entrada pendentes de processamento."""
         processed = self.get_processed_basenames()
         pending = []
 
-        # Vídeos
         if self.input_videos_dir.exists():
             for f in self.input_videos_dir.iterdir():
                 if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                     if f.stem not in processed:
                         pending.append({
-                            "path": f,
-                            "filename": f.name,
-                            "basename": f.stem,
-                            "type": "video",
-                            "ext": f.suffix.lower()
+                            "path": f, "filename": f.name, "basename": f.stem, "type": "video", "ext": f.suffix.lower()
                         })
 
-        # Imagens
         if self.input_images_dir.exists():
             for f in self.input_images_dir.iterdir():
                 if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
                     if f.stem not in processed:
                         pending.append({
-                            "path": f,
-                            "filename": f.name,
-                            "basename": f.stem,
-                            "type": "image",
-                            "ext": f.suffix.lower()
+                            "path": f, "filename": f.name, "basename": f.stem, "type": "image", "ext": f.suffix.lower()
                         })
 
         return sorted(pending, key=lambda x: x["filename"])
 
-    # --------------------------------------------------------
-    # Processamento de Áudio & Vídeo com FFmpeg
-    # --------------------------------------------------------
     def extract_audio_and_frames(self, video_path: Path, basename: str) -> dict:
-        """Extrai áudio WAV e frames JPG de um arquivo de vídeo usando FFmpeg."""
         audio_path = self.processing_audio_dir / f"{basename}.wav"
         video_frames_dir = self.processing_frames_dir / basename
         video_frames_dir.mkdir(parents=True, exist_ok=True)
 
-        # 1. Extração de Áudio
         cmd_audio = [
             "ffmpeg", "-y", "-i", str(video_path),
             "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
@@ -153,10 +149,9 @@ class KnowledgePipeline:
         try:
             subprocess.run(cmd_audio, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
         except Exception as e:
-            console.print(f"[yellow]⚠️  Falha ao extrair áudio ({e}). O vídeo continuará sem áudio.[/yellow]")
+            console.print(f"[yellow]⚠️  Falha ao extrair áudio: {e}[/yellow]")
             audio_path = None
 
-        # 2. Extração de Frames (1 frame a cada 10s)
         cmd_frames = [
             "ffmpeg", "-y", "-i", str(video_path),
             "-vf", "fps=1/10,scale=720:-1", "-q:v", "3",
@@ -167,7 +162,6 @@ class KnowledgePipeline:
         except Exception as e:
             console.print(f"[red]❌ Erro ao extrair frames: {e}[/red]")
 
-        # 3. Duração via FFprobe
         duration = 0
         cmd_probe = [
             "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
@@ -188,11 +182,7 @@ class KnowledgePipeline:
             "duration_seconds": round(duration)
         }
 
-    # --------------------------------------------------------
-    # Chamadas de API (Whisper & Ollama)
-    # --------------------------------------------------------
     def transcribe_audio_whisper(self, audio_path: Path, filename: str) -> str:
-        """Envia o arquivo WAV para a API do Whisper via multipart request."""
         if not audio_path or not audio_path.exists():
             return "[Sem áudio extraído para transcrição]"
 
@@ -200,7 +190,7 @@ class KnowledgePipeline:
             with open(audio_path, "rb") as f:
                 audio_bytes = f.read()
 
-            boundary = "----WebKitFormBoundary" + os.urllib_parse_hash() if hasattr(os, 'urllib_parse_hash') else "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+            boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
             body = (
                 f"--{boundary}\r\n"
                 f'Content-Disposition: form-data; name="audio_file"; filename="{filename}.wav"\r\n'
@@ -226,7 +216,6 @@ class KnowledgePipeline:
             return f"[Erro Whisper: {e}]"
 
     def query_ollama(self, model: str, prompt: str, image_path: Path = None, system_prompt: str = None, json_format: bool = False) -> str:
-        """Envia uma requisição de chat para a API do Ollama (local/host)."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -261,24 +250,15 @@ class KnowledgePipeline:
                 return res.get("message", {}).get("content", "").strip()
         except Exception as e:
             console.print(f"[red]❌ Erro na requisição ao Ollama ({model}): {e}[/red]")
-            return f"[Erro Ollama: {e}]"
+            raise RuntimeError(f"Ollama API ({model}) falhou: {e}")
 
-    # --------------------------------------------------------
-    # Análise Visual & Filtro de Apresentador (Moondream)
-    # --------------------------------------------------------
     def analyze_and_filter_frames(self, frame_paths: list[Path], target_frames_dir: Path) -> tuple[list[dict], list[str]]:
-        """
-        Analisa os frames com o modelo Moondream:
-          - Classifica e descarta frames que contêm APENAS o rosto do apresentador (talking head).
-          - Copia e salva apenas os frames com CONTEÚDO (telas, slides, gráficos, buscas, texto).
-        """
         descriptions = []
         saved_frame_paths = []
 
         if not frame_paths:
             return descriptions, saved_frame_paths
 
-        # Selecionar até 3-5 frames para descrição OCR detalhada
         max_ocr_frames = 3
         if len(frame_paths) <= max_ocr_frames:
             selected_ocr_frames = set(frame_paths)
@@ -289,7 +269,6 @@ class KnowledgePipeline:
         for frame_path in frame_paths:
             frame_filename = frame_path.name
 
-            # 1. Classificação ROSTO vs CONTEUDO
             prompt_classify = (
                 "Esta imagem mostra apenas o rosto ou corpo do apresentador (talking head/pessoa falando para a câmera) "
                 "sem tela de computador, slides, texto ou gráficos? "
@@ -303,13 +282,11 @@ class KnowledgePipeline:
                 console.print(f"  [yellow]🙈 Frame ignorado (apenas rosto): {frame_filename}[/yellow]")
                 continue
 
-            # 2. Se for CONTEÚDO, copia para a pasta de saída persistente
             target_frames_dir.mkdir(parents=True, exist_ok=True)
             dest = target_frames_dir / frame_filename
             shutil.copy2(frame_path, dest)
             saved_frame_paths.append(str(dest))
 
-            # 3. Se selecionado para OCR detalhado, faz transcrição do texto visível
             if frame_path in selected_ocr_frames:
                 prompt_ocr = (
                     "Transcreva todo o texto visível nesta imagem. "
@@ -323,11 +300,7 @@ class KnowledgePipeline:
 
         return descriptions, saved_frame_paths
 
-    # --------------------------------------------------------
-    # Extração de Conhecimento em SEO (Qwen2.5:3b)
-    # --------------------------------------------------------
     def extract_seo_knowledge(self, filename: str, is_video: bool, transcription: str = None, visual_summary: str = None) -> dict:
-        """Gera a estrutura JSON com a estratégia de SEO usando Qwen2.5:3b."""
         if is_video:
             context = f"## Vídeo de SEO: {filename}\n"
             if transcription: context += f"## Transcrição do Áudio:\n{transcription}\n\n"
@@ -339,21 +312,16 @@ class KnowledgePipeline:
         system_prompt = (
             "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
             "Sua missão principal é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do vídeo/post fornecido, "
-            'capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada (ex: "Entre no Google Trends", "Clique em Explorar", "Abra o Gemini", "Abra o Semrush", etc.).\n\n'
-            "NÃO RESUMA OU SINTETIZE DEMAIS. Descreva cada ação prática de forma acionável para que qualquer pessoa possa replicar exatamente os mesmos cliques no próprio negócio.\n\n"
-            "RETORNE APENAS um JSON válido no seguinte formato:\n"
+            'capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n'
+            "RETORNE APENAS um JSON válido:\n"
             "{\n"
-            '  "titulo_estrategia": "título objetivo da estratégia ou tutorial de SEO",\n'
-            '  "resumo_executivo": "resumo da técnica ensinada em 2 frases",\n'
-            '  "passo_a_passo_detalhado": [\n'
-            '    "Passo 1: [Ação exata] Acesse o site/ferramenta X...",\n'
-            '    "Passo 2: [Clique/Digite] Clique no menu Y ou digite o termo Z...",\n'
-            '    "Passo N: ..."\n'
-            "  ],\n"
-            '  "ferramentas_e_telas_utilizadas": ["ex: Google Trends, Gemini, Semrush"],\n'
-            '  "termos_e_exemplos_usados": ["termos de busca ou palavras-chave usadas como exemplo"],\n'
-            '  "aplicacao_no_negocio": "como utilizar essa estratégia para ranquear melhor",\n'
-            '  "conceitos_mencionados": ["ex: Long-tail, Volume de busca"]\n'
+            '  "titulo_estrategia": "título objetivo da estratégia",\n'
+            '  "resumo_executivo": "resumo em 2 frases",\n'
+            '  "passo_a_passo_detalhado": ["Passo 1: ...", "Passo 2: ..."],\n'
+            '  "ferramentas_e_telas_utilizadas": ["ex: Google Trends, Gemini"],\n'
+            '  "termos_e_exemplos_usados": ["palavras-chave usadas"],\n'
+            '  "aplicacao_no_negocio": "como aplicar para vender mais",\n'
+            '  "conceitos_mencionados": ["ex: Long-tail"]\n'
             "}"
         )
 
@@ -363,107 +331,103 @@ class KnowledgePipeline:
         except Exception:
             return {"raw_output": res_str}
 
-    # --------------------------------------------------------
-    # Processador Principal por Item
-    # --------------------------------------------------------
     def process_item(self, item: dict) -> bool:
-        """Processa um arquivo individual (vídeo ou imagem)."""
         filepath: Path = item["path"]
         basename: str = item["basename"]
         filetype: str = item["type"]
         filename: str = item["filename"]
 
         console.print(f"\n[bold blue]🚀 Processando ({filetype.upper()}): {filename}[/bold blue]")
+        send_telemetry_event(self.run_id, "START_FILE", status="in_progress", filename=filename, message=f"Iniciando {filename}")
 
-        transcription = None
-        visual_summary = ""
-        frame_descriptions = []
-        saved_frame_paths = []
-        duration_seconds = None
+        try:
+            transcription = None
+            visual_summary = ""
+            frame_descriptions = []
+            saved_frame_paths = []
+            duration_seconds = None
 
-        if filetype == "video":
-            # 1. FFmpeg Extração
-            console.print("  [cyan]1/4 Extraindo áudio e frames com FFmpeg...[/cyan]")
-            ext_res = self.extract_audio_and_frames(filepath, basename)
-            duration_seconds = ext_res["duration_seconds"]
+            if filetype == "video":
+                send_telemetry_event(self.run_id, "FFMPEG_EXTRACT", status="in_progress", filename=filename, message="Extraindo áudio e frames via FFmpeg")
+                ext_res = self.extract_audio_and_frames(filepath, basename)
+                duration_seconds = ext_res["duration_seconds"]
 
-            # 2. Whisper Transcrição
-            console.print("  [cyan]2/4 Transcrevendo áudio com Whisper...[/cyan]")
-            transcription = self.transcribe_audio_whisper(ext_res["audio_path"], basename)
+                send_telemetry_event(self.run_id, "WHISPER_TRANSCRIBE", status="in_progress", filename=filename, message="Transcrevendo fala via Whisper")
+                transcription = self.transcribe_audio_whisper(ext_res["audio_path"], basename)
 
-            # 3. Moondream Visão e Filtro de Apresentador
-            console.print("  [cyan]3/4 Analisando visivelmente e filtrando rostos dos apresentadores...[/cyan]")
-            target_video_frames_dir = self.output_frames_dir / basename
-            frame_descriptions, saved_frame_paths = self.analyze_and_filter_frames(
-                ext_res["frame_paths"], target_video_frames_dir
+                send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Classificando frames e filtrando rosto de apresentadores")
+                target_video_frames_dir = self.output_frames_dir / basename
+                frame_descriptions, saved_frame_paths = self.analyze_and_filter_frames(
+                    ext_res["frame_paths"], target_video_frames_dir
+                )
+                visual_summary = "\n---\n".join([d["description"] for d in frame_descriptions]) if frame_descriptions else "Sem telas visuais de conteúdo identificadas"
+
+            else:
+                send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Analisando conteúdo da imagem única")
+                prompt_img = (
+                    "Transcreva EXATAMENTE todo o texto visível nesta imagem. "
+                    "Identifique conceitos de SEO, dicas de busca do Google, palavras-chave e conselhos mostrados na imagem. Responda em português."
+                )
+                visual_summary = self.query_ollama("moondream", prompt_img, image_path=filepath)
+
+            send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via Qwen2.5:3b")
+            seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
+
+            document = {
+                "metadata": {
+                    "source": "facebook_profile_seo",
+                    "pipeline_version": "3.0.0 (Python Nativo)",
+                    "processed_at": datetime.now().isoformat()
+                },
+                "source_file": {
+                    "filename": filename,
+                    "type": filetype,
+                    "extension": item["ext"],
+                    "path": str(filepath),
+                    "duration_seconds": duration_seconds
+                },
+                "content": {
+                    "transcription": transcription,
+                    "visual_description": visual_summary,
+                    "frame_descriptions": frame_descriptions if filetype == "video" else None,
+                    "saved_frame_files": saved_frame_paths
+                },
+                "seo_knowledge": seo_knowledge
+            }
+
+            output_path = self.output_dir / f"{basename}.json"
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(document, f, ensure_ascii=False, indent=2)
+
+            console.print(f"[bold green]✅ Sucesso! Conhecimento salvo em: {output_path}[/bold green]")
+            send_telemetry_event(self.run_id, "FILE_COMPLETE", status="completed", filename=filename, message=f"Sucesso ao processar {filename}")
+            return True
+
+        except Exception as err:
+            err_msg = str(err)
+            err_trace = traceback.format_exc()
+            console.print(f"[bold red]❌ Erro crítico ao processar {filename}: {err_msg}[/bold red]")
+            send_telemetry_event(
+                self.run_id, "ERROR", status="error", filename=filename,
+                message=f"Falha ao processar {filename}: {err_msg}",
+                error_details=err_trace
             )
-            visual_summary = "\n---\n".join([d["description"] for d in frame_descriptions]) if frame_descriptions else "Sem telas visuais de conteúdo identificadas"
+            return False
 
-        else:
-            # Imagem única
-            console.print("  [cyan]1/2 Analisando imagem única com Moondream...[/cyan]")
-            prompt_img = (
-                "Transcreva EXATAMENTE todo o texto visível nesta imagem. "
-                "Identifique conceitos de SEO, dicas de busca do Google, palavras-chave e conselhos mostrados na imagem. Responda em português."
-            )
-            visual_summary = self.query_ollama("moondream", prompt_img, image_path=filepath)
-
-        # 4. LLM Extração Estruturada
-        console.print("  [cyan]4/4 Extraindo conhecimento em SEO com Qwen2.5:3b...[/cyan]")
-        seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
-
-        # 5. Montagem do Documento JSON Final
-        document = {
-            "metadata": {
-                "source": "facebook_profile_seo",
-                "pipeline_version": "3.0.0 (Python Nativo)",
-                "processed_at": datetime.now().isoformat()
-            },
-            "source_file": {
-                "filename": filename,
-                "type": filetype,
-                "extension": item["ext"],
-                "path": str(filepath),
-                "duration_seconds": duration_seconds
-            },
-            "content": {
-                "transcription": transcription,
-                "visual_description": visual_summary,
-                "frame_descriptions": frame_descriptions if filetype == "video" else None,
-                "saved_frame_files": saved_frame_paths
-            },
-            "seo_knowledge": seo_knowledge
-        }
-
-        output_path = self.output_dir / f"{basename}.json"
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(document, f, ensure_ascii=False, indent=2)
-
-        console.print(f"[bold green]✅ Sucesso! Conhecimento salvo em: {output_path}[/bold green]")
-        return True
-
-    # --------------------------------------------------------
-    # Execução do Ciclo
-    # --------------------------------------------------------
     def run_once(self):
-        """Varre e processa todos os arquivos pendentes."""
         pending = self.get_pending_files()
+        send_telemetry_event(self.run_id, "PIPELINE_START", status="info", message=f"Pipeline iniciado com {len(pending)} arquivo(s) pendente(s)")
         if not pending:
             console.print("[dim]Nenhum arquivo pendente para processar.[/dim]")
             return 0
 
-        console.print(f"[bold green]📦 {len(pending)} arquivo(s) pendente(s) encontrado(s).[/bold green]")
         count = 0
         for item in pending:
-            try:
-                if self.process_item(item):
-                    count += 1
-            except Exception as e:
-                console.print(f"[bold red]❌ Falha ao processar {item['filename']}: {e}[/bold red]")
+            if self.process_item(item):
+                count += 1
         return count
 
     def run_watch(self, interval: int = 30):
-        """Roda continuamente checando novos arquivos a cada N segundos."""
         console.print(f"[bold blue]👀 Pipeline Python ativo em modo contínuo (intervalo: {interval}s)...[/bold blue]")
         try:
             while True:
@@ -473,15 +437,6 @@ class KnowledgePipeline:
             console.print("\n[yellow]🛑 Monitoramento encerrado pelo usuário.[/yellow]")
 
 
-# Helper para hash no boundary
-if not hasattr(os, 'urllib_parse_hash'):
-    import hashlib
-    os.urllib_parse_hash = lambda: hashlib.md5(str(time.time()).encode()).hexdigest()[:12]
-
-
-# ============================================================
-# Main CLI
-# ============================================================
 def main():
     parser = argparse.ArgumentParser(description="PipelineFace — Extração de Conhecimento em Python Nativo")
     parser.add_argument("--watch", action="store_true", help="Executar em loop contínuo de monitoramento")
@@ -503,11 +458,7 @@ def main():
             console.print(f"[bold red]❌ Extensão não suportada: {ext}[/bold red]")
             sys.exit(1)
         item = {
-            "path": file_path,
-            "filename": file_path.name,
-            "basename": file_path.stem,
-            "type": filetype,
-            "ext": ext
+            "path": file_path, "filename": file_path.name, "basename": file_path.stem, "type": filetype, "ext": ext
         }
         pipeline.process_item(item)
     elif args.watch:

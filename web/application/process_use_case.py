@@ -1,10 +1,28 @@
 """
-Process Use Cases — PipelineFace (Clean Architecture)
-=====================================================
-Casos de uso para execução e monitoramento de subprocessos (Pipeline e Scraper).
+Process & Telemetry Use Cases — PipelineFace (Clean Architecture)
+=================================================================
+Casos de uso para execução, captura de webhooks de telemetria e consulta de erros no MongoDB.
 """
 
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
+from web.domain.entities import ExecutionEvent
+from web.domain.repositories import AbstractExecutionEventRepository
+
+
+class RecordExecutionEventUseCase:
+    def __init__(self, repository: AbstractExecutionEventRepository):
+        self.repository = repository
+
+    def execute(self, event: ExecutionEvent) -> ExecutionEvent:
+        return self.repository.save_event(event)
+
+
+class GetExecutionEventsUseCase:
+    def __init__(self, repository: AbstractExecutionEventRepository):
+        self.repository = repository
+
+    def execute(self, source: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> List[ExecutionEvent]:
+        return self.repository.list_events(source=source, status=status, limit=limit)
 
 
 class RunPipelineUseCase:

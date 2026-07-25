@@ -1,18 +1,19 @@
 """
-Mongo Strategy Repository — PipelineFace (Clean Architecture)
-=============================================================
-Implementação concreta do repositório de estratégias usando PyMongo.
+Mongo Repositories — PipelineFace (Clean Architecture)
+======================================================
+Implementação concreta dos repositórios de estratégias e telemetria usando PyMongo.
 """
 
 import re
+import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
 from pymongo import MongoClient
 
 from web.domain.entities import (
-    Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment
+    Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment, ExecutionEvent
 )
-from web.domain.repositories import AbstractStrategyRepository
+from web.domain.repositories import AbstractStrategyRepository, AbstractExecutionEventRepository
 
 
 class MongoStrategyRepository(AbstractStrategyRepository):
@@ -113,3 +114,34 @@ class MongoStrategyRepository(AbstractStrategyRepository):
         if res.matched_count == 0:
             raise KeyError(f"Estratégia {basename} não encontrada")
         return comment
+
+
+class MongoExecutionEventRepository(AbstractExecutionEventRepository):
+    def __init__(self, mongo_uri: str = "mongodb://localhost:27017", db_name: str = "pipelineface", collection_name: str = "execution_events"):
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+
+    def save_event(self, event: ExecutionEvent) -> ExecutionEvent:
+        doc = event.model_dump()
+        if not doc.get("id"):
+            doc["id"] = str(uuid.uuid4())[:8]
+            event.id = doc["id"]
+
+        self.collection.insert_one(doc)
+        return event
+
+    def list_events(
+        self,
+        source: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50
+    ) -> List[ExecutionEvent]:
+        query = {}
+        if source:
+            query["source"] = source
+        if status:
+            query["status"] = status
+
+        docs = list(self.collection.find(query, {"_id": 0}).sort("created_at", -1).limit(limit))
+        return [ExecutionEvent(**d) for d in docs]

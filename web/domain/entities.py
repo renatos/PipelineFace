@@ -59,3 +59,17 @@ class Strategy(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     user_implementation: UserImplementation = Field(default_factory=UserImplementation)
     updated_at: str
+
+
+class ExecutionEvent(BaseModel):
+    id: Optional[str] = None
+    run_id: str
+    source: str  # "pipeline" | "scraper"
+    step: str    # "SCRAPER_START", "SCROLL_PROGRESS", "VIDEO_DOWNLOAD", "FFMPEG_EXTRACT", "WHISPER_TRANSCRIBE", "VISION_CLASSIFY", "LLM_SEO_EXTRACTION", "COMPLETE", "ERROR"
+    status: str  # "info", "in_progress", "completed", "error"
+    filename: Optional[str] = None
+    target_url: Optional[str] = None
+    message: str
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    error_details: Optional[str] = None
+    created_at: str

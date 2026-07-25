@@ -76,9 +76,48 @@ SCROLL_PAUSE = 2.5  # segundos entre scrolls
 PAGE_LOAD_TIMEOUT = 30000  # ms
 
 
+
+def send_telemetry_event(
+    run_id: str,
+    step: str,
+    status: str = "info",
+    target_url: str = None,
+    filename: str = None,
+    message: str = "",
+    metrics: dict = None,
+    error_details: str = None,
+    webhook_url: str = "http://localhost:8000/api/webhooks/execution-event"
+):
+    try:
+        import urllib.request, json
+        payload = {
+            "run_id": run_id,
+            "source": "scraper",
+            "step": step,
+            "status": status,
+            "filename": filename,
+            "target_url": target_url,
+            "message": message,
+            "metrics": metrics or {},
+            "error_details": error_details
+        }
+        req_data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            pass
+    except Exception:
+        pass
+
+
 class FacebookScraper:
     """Scraper de perfis do Facebook com sessão autenticada."""
 
+    import uuid
     def __init__(
         self,
         target_url: str,
@@ -110,6 +149,7 @@ class FacebookScraper:
         self.collected_images: list[dict] = []
         self.profile_info: dict = {}
         self.errors: list[str] = []
+        self.run_id = str(uuid.uuid4())[:8]
         
         # Histórico persistente de downloads para evitar re-download
         self.history_file = self.output_metadata / "download_history.json"

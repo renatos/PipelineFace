@@ -1,24 +1,21 @@
 """
 Domain Repositories Interfaces — PipelineFace (Clean Architecture)
 ==================================================================
-Contrato abstrato de persistência para as estratégias de SEO.
+Contrato abstrato de persistência para as estratégias e eventos de telemetria.
 """
 
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
-from web.domain.entities import Strategy, Comment
+from web.domain.entities import Strategy, Comment, ExecutionEvent
 
 
 class AbstractStrategyRepository(ABC):
-    
     @abstractmethod
     def save_or_update(self, strategy: Strategy) -> None:
-        """Salva ou atualiza uma estratégia no repositório."""
         pass
 
     @abstractmethod
     def find_by_basename(self, basename: str) -> Optional[Strategy]:
-        """Busca uma estratégia pelo seu identificador basename."""
         pass
 
     @abstractmethod
@@ -28,20 +25,33 @@ class AbstractStrategyRepository(ABC):
         search: Optional[str] = None,
         media_type: Optional[str] = None
     ) -> List[Strategy]:
-        """Lista todas as estratégias aplicando filtros opcionais."""
         pass
 
     @abstractmethod
     def toggle_step(self, basename: str, step_index: int) -> Tuple[List[int], str]:
-        """Alterna a conclusão de um passo do tutorial e retorna (passos_concluidos, novo_status)."""
         pass
 
     @abstractmethod
     def update_status(self, basename: str, status: str) -> str:
-        """Atualiza o status geral da estratégia."""
         pass
 
     @abstractmethod
     def add_comment(self, basename: str, comment: Comment) -> Comment:
-        """Adiciona um comentário/observação a uma estratégia."""
+        pass
+
+
+class AbstractExecutionEventRepository(ABC):
+    @abstractmethod
+    def save_event(self, event: ExecutionEvent) -> ExecutionEvent:
+        """Persiste um evento de telemetria ou erro no repositório."""
+        pass
+
+    @abstractmethod
+    def list_events(
+        self,
+        source: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50
+    ) -> List[ExecutionEvent]:
+        """Lista os eventos de telemetria ordenados pelos mais recentes."""
         pass
