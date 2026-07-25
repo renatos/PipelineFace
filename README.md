@@ -53,10 +53,10 @@ podman-compose up -d
 ### 3. Executar o Pipeline de Conhecimento em Python
 ```bash
 # Executar uma vez sobre todos os arquivos pendentes em data/input/
-python pipeline.py
+python3 pipeline.py
 
 # Ou executar em modo contínuo (monitora novos arquivos a cada 30s):
-python pipeline.py --watch --interval 30
+python3 pipeline.py --watch --interval 30
 ```
 
 ---
