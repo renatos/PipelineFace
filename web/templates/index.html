@@ -666,7 +666,7 @@
     async function startScraper() {
       const url = document.getElementById('scraper-url').value.trim();
       const maxScrolls = parseInt(document.getElementById('scraper-max-scrolls').value, 10) || 50;
-      if (!url) return alert('Digite a URL');
+      if (!url) return alert('Digite a URL do perfil alvo');
       try {
         const res = await fetch('/api/run-scraper', {
           method: 'POST',
@@ -678,8 +678,15 @@
             only_images: document.getElementById('scraper-only-images').checked
           })
         });
-        if (res.ok) { closeModal('modal-scraper'); openLogsModal(); }
-      } catch (err) { alert(err); }
+        if (res.ok) {
+          closeModal('modal-scraper');
+          openLogsModal();
+          checkProcessStatus();
+        } else {
+          const d = await res.json();
+          alert(d.detail || 'Erro ao iniciar o scraper.');
+        }
+      } catch (err) { alert('Erro na comunicação com o servidor: ' + err); }
     }
 
     async function stopProcess() {

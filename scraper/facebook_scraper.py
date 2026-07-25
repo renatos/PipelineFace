@@ -35,6 +35,7 @@ import subprocess
 import sys
 import time
 import hashlib
+import uuid
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
@@ -67,10 +68,11 @@ except ImportError:
 # Configuração
 # ============================================================
 
-DEFAULT_OUTPUT_VIDEOS = "/data/input/videos"
-DEFAULT_OUTPUT_IMAGES = "/data/input/images"
-DEFAULT_OUTPUT_METADATA = "/data/input/metadata"
-DEFAULT_SESSION_DIR = "/data/scraper/session"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_OUTPUT_VIDEOS = str(PROJECT_ROOT / "data" / "input" / "videos")
+DEFAULT_OUTPUT_IMAGES = str(PROJECT_ROOT / "data" / "input" / "images")
+DEFAULT_OUTPUT_METADATA = str(PROJECT_ROOT / "data" / "input" / "metadata")
+DEFAULT_SESSION_DIR = str(PROJECT_ROOT / "data" / "scraper" / "session")
 DEFAULT_MAX_SCROLLS = 50
 SCROLL_PAUSE = 2.5  # segundos entre scrolls
 PAGE_LOAD_TIMEOUT = 30000  # ms
