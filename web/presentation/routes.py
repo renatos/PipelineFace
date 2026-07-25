@@ -16,7 +16,7 @@ from web.application.strategy_use_cases import (
 )
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
-    RecordExecutionEventUseCase, GetExecutionEventsUseCase
+    RecordExecutionEventUseCase, GetExecutionEventsUseCase, SaveTargetProfileUseCase, GetTargetProfilesUseCase
 )
 from web.infrastructure.media_service import MediaStreamingService
 
@@ -41,6 +41,11 @@ class ScraperRequest(BaseModel):
     only_videos: bool = False
     only_images: bool = False
     max_scrolls: int = 50
+
+
+class TargetProfileRequest(BaseModel):
+    target_url: str
+    max_scrolls: Optional[int] = 50
 
 
 class ExecutionEventRequest(BaseModel):
@@ -68,6 +73,8 @@ stop_process_use_case: StopProcessUseCase = None
 get_process_status_use_case: GetProcessStatusUseCase = None
 record_event_use_case: RecordExecutionEventUseCase = None
 get_events_use_case: GetExecutionEventsUseCase = None
+save_profile_use_case: SaveTargetProfileUseCase = None
+get_profiles_use_case: GetTargetProfilesUseCase = None
 media_service: MediaStreamingService = None
 
 
@@ -76,12 +83,14 @@ def init_routes(
     _toggle_step_use_case, _update_status_use_case, _add_comment_use_case,
     _run_pipeline_use_case, _run_scraper_use_case, _stop_process_use_case, _get_process_status_use_case,
     _record_event_use_case, _get_events_use_case,
+    _save_profile_use_case, _get_profiles_use_case,
     _media_service
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
     global toggle_step_use_case, update_status_use_case, add_comment_use_case
     global run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case
     global record_event_use_case, get_events_use_case
+    global save_profile_use_case, get_profiles_use_case
     global media_service
 
     sync_use_case = _sync_use_case
@@ -96,7 +105,23 @@ def init_routes(
     get_process_status_use_case = _get_process_status_use_case
     record_event_use_case = _record_event_use_case
     get_events_use_case = _get_events_use_case
+    save_profile_use_case = _save_profile_use_case
+    get_profiles_use_case = _get_profiles_use_case
     media_service = _media_service
+
+
+@router.get("/api/target-profiles")
+def get_target_profiles(limit: int = Query(20)):
+    """Lista os perfis alvo salvos no MongoDB."""
+    profiles = get_profiles_use_case.execute(limit=limit)
+    return {"count": len(profiles), "profiles": [p.model_dump() for p in profiles]}
+
+
+@router.post("/api/target-profiles")
+def save_target_profile(payload: TargetProfileRequest):
+    """Cadastra ou atualiza um perfil alvo no MongoDB."""
+    profile = save_profile_use_case.execute(target_url=payload.target_url, max_scrolls=payload.max_scrolls or 50)
+    return profile.model_dump()
 
 
 @router.post("/api/webhooks/execution-event")
@@ -215,6 +240,12 @@ def run_scraper(payload: ScraperRequest, background_tasks: BackgroundTasks):
     status = get_process_status_use_case.execute()
     if status.get("running"):
         raise HTTPException(status_code=400, detail=f"Processo {status.get('name')} já está em execução.")
+
+    # Auto-registrar perfil no MongoDB ao iniciar raspagem
+    try:
+        save_profile_use_case.execute(target_url=payload.target_url, max_scrolls=payload.max_scrolls)
+    except Exception as e:
+        print(f"Aviso ao registrar perfil: {e}")
 
     background_tasks.add_task(
         run_scraper_use_case.execute,

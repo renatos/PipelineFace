@@ -1,12 +1,12 @@
 """
 Process & Telemetry Use Cases — PipelineFace (Clean Architecture)
 =================================================================
-Casos de uso para execução, interrupção, captura de webhooks de telemetria e consulta de erros no MongoDB.
+Casos de uso para execução, interrupção, telemetria e gestão de histórico de perfis alvo.
 """
 
 from typing import Dict, Any, Callable, List, Optional
-from web.domain.entities import ExecutionEvent
-from web.domain.repositories import AbstractExecutionEventRepository
+from web.domain.entities import ExecutionEvent, TargetProfile
+from web.domain.repositories import AbstractExecutionEventRepository, AbstractTargetProfileRepository
 
 
 class RecordExecutionEventUseCase:
@@ -23,6 +23,22 @@ class GetExecutionEventsUseCase:
 
     def execute(self, source: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> List[ExecutionEvent]:
         return self.repository.list_events(source=source, status=status, limit=limit)
+
+
+class SaveTargetProfileUseCase:
+    def __init__(self, repository: AbstractTargetProfileRepository):
+        self.repository = repository
+
+    def execute(self, target_url: str, max_scrolls: int = 50) -> TargetProfile:
+        return self.repository.save_or_update_profile(target_url=target_url, max_scrolls=max_scrolls)
+
+
+class GetTargetProfilesUseCase:
+    def __init__(self, repository: AbstractTargetProfileRepository):
+        self.repository = repository
+
+    def execute(self, limit: int = 20) -> List[TargetProfile]:
+        return self.repository.list_profiles(limit=limit)
 
 
 class RunPipelineUseCase:

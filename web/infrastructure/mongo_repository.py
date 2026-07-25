@@ -1,19 +1,22 @@
 """
 Mongo Repositories — PipelineFace (Clean Architecture)
 ======================================================
-Implementação concreta dos repositórios de estratégias e telemetria usando PyMongo.
+Implementação concreta dos repositórios de estratégias, telemetria e perfis alvo usando PyMongo.
 """
 
 import re
 import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 from pymongo import MongoClient
 
 from web.domain.entities import (
-    Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment, ExecutionEvent
+    Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment, ExecutionEvent, TargetProfile
 )
-from web.domain.repositories import AbstractStrategyRepository, AbstractExecutionEventRepository
+from web.domain.repositories import (
+    AbstractStrategyRepository, AbstractExecutionEventRepository, AbstractTargetProfileRepository
+)
 
 
 class MongoStrategyRepository(AbstractStrategyRepository):
@@ -145,3 +148,42 @@ class MongoExecutionEventRepository(AbstractExecutionEventRepository):
 
         docs = list(self.collection.find(query, {"_id": 0}).sort("created_at", -1).limit(limit))
         return [ExecutionEvent(**d) for d in docs]
+
+
+class MongoTargetProfileRepository(AbstractTargetProfileRepository):
+    def __init__(self, mongo_uri: str = "mongodb://localhost:27017", db_name: str = "pipelineface", collection_name: str = "target_profiles"):
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+
+    def save_or_update_profile(self, target_url: str, max_scrolls: int = 50) -> TargetProfile:
+        target_url = target_url.strip()
+        parsed = urlparse(target_url)
+        profile_name = parsed.path.strip("/").split("/")[-1] if parsed.path else "Perfil"
+
+        existing = self.collection.find_one({"target_url": target_url})
+        scrape_count = (existing.get("scrape_count", 0) + 1) if existing else 1
+        prof_id = existing.get("id") if existing else str(uuid.uuid4())[:8]
+
+        profile = TargetProfile(
+            id=prof_id,
+            target_url=target_url,
+            profile_name=profile_name or target_url,
+            last_scraped_at=datetime.now().isoformat(),
+            scrape_count=scrape_count,
+            last_max_scrolls=max_scrolls,
+            last_videos_count=existing.get("last_videos_count", 0) if existing else 0,
+            last_images_count=existing.get("last_images_count", 0) if existing else 0
+        )
+
+        doc = profile.model_dump()
+        self.collection.update_one(
+            {"target_url": target_url},
+            {"$set": doc},
+            upsert=True
+        )
+        return profile
+
+    def list_profiles(self, limit: int = 20) -> List[TargetProfile]:
+        docs = list(self.collection.find({}, {"_id": 0}).sort("last_scraped_at", -1).limit(limit))
+        return [TargetProfile(**d) for d in docs]

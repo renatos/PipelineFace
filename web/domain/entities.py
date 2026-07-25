@@ -65,7 +65,7 @@ class ExecutionEvent(BaseModel):
     id: Optional[str] = None
     run_id: str
     source: str  # "pipeline" | "scraper"
-    step: str    # "SCRAPER_START", "SCROLL_PROGRESS", "VIDEO_DOWNLOAD", "FFMPEG_EXTRACT", "WHISPER_TRANSCRIBE", "VISION_CLASSIFY", "LLM_SEO_EXTRACTION", "COMPLETE", "ERROR"
+    step: str
     status: str  # "info", "in_progress", "completed", "error"
     filename: Optional[str] = None
     target_url: Optional[str] = None
@@ -73,3 +73,14 @@ class ExecutionEvent(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
     error_details: Optional[str] = None
     created_at: str
+
+
+class TargetProfile(BaseModel):
+    id: Optional[str] = None
+    target_url: str
+    profile_name: Optional[str] = None
+    last_scraped_at: str
+    scrape_count: int = 1
+    last_max_scrolls: Optional[int] = 50
+    last_videos_count: Optional[int] = 0
+    last_images_count: Optional[int] = 0

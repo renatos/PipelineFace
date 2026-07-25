@@ -1,12 +1,12 @@
 """
 Domain Repositories Interfaces — PipelineFace (Clean Architecture)
 ==================================================================
-Contrato abstrato de persistência para as estratégias e eventos de telemetria.
+Contrato abstrato de persistência para as estratégias, eventos e histórico de perfis alvo.
 """
 
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
-from web.domain.entities import Strategy, Comment, ExecutionEvent
+from web.domain.entities import Strategy, Comment, ExecutionEvent, TargetProfile
 
 
 class AbstractStrategyRepository(ABC):
@@ -43,7 +43,6 @@ class AbstractStrategyRepository(ABC):
 class AbstractExecutionEventRepository(ABC):
     @abstractmethod
     def save_event(self, event: ExecutionEvent) -> ExecutionEvent:
-        """Persiste um evento de telemetria ou erro no repositório."""
         pass
 
     @abstractmethod
@@ -53,5 +52,16 @@ class AbstractExecutionEventRepository(ABC):
         status: Optional[str] = None,
         limit: int = 50
     ) -> List[ExecutionEvent]:
-        """Lista os eventos de telemetria ordenados pelos mais recentes."""
+        pass
+
+
+class AbstractTargetProfileRepository(ABC):
+    @abstractmethod
+    def save_or_update_profile(self, target_url: str, max_scrolls: int = 50) -> TargetProfile:
+        """Salva ou atualiza um perfil alvo na coleção do MongoDB."""
+        pass
+
+    @abstractmethod
+    def list_profiles(self, limit: int = 20) -> List[TargetProfile]:
+        """Lista os perfis alvo gravados no MongoDB ordenados pela data de raspagem."""
         pass

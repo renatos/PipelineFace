@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 
 # Imports das Camadas da Arquitetura Limpa
-from web.infrastructure.mongo_repository import MongoStrategyRepository, MongoExecutionEventRepository
+from web.infrastructure.mongo_repository import (
+    MongoStrategyRepository, MongoExecutionEventRepository, MongoTargetProfileRepository
+)
 from web.infrastructure.media_service import MediaStreamingService
 from web.infrastructure.process_runner import AsyncProcessRunner
 
@@ -21,7 +23,7 @@ from web.application.strategy_use_cases import (
 )
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
-    RecordExecutionEventUseCase, GetExecutionEventsUseCase
+    RecordExecutionEventUseCase, GetExecutionEventsUseCase, SaveTargetProfileUseCase, GetTargetProfilesUseCase
 )
 from web.presentation.routes import router as api_router, init_routes
 
@@ -53,6 +55,7 @@ def create_app() -> FastAPI:
     # 1. Instanciação da Infraestrutura
     mongo_repo = MongoStrategyRepository(mongo_uri=MONGO_URI)
     event_repo = MongoExecutionEventRepository(mongo_uri=MONGO_URI)
+    profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
     media_service = MediaStreamingService(INPUT_VIDEOS_DIR, INPUT_IMAGES_DIR, OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
@@ -73,6 +76,9 @@ def create_app() -> FastAPI:
     record_event_use_case = RecordExecutionEventUseCase(event_repo)
     get_events_use_case = GetExecutionEventsUseCase(event_repo)
 
+    save_profile_use_case = SaveTargetProfileUseCase(profile_repo)
+    get_profiles_use_case = GetTargetProfilesUseCase(profile_repo)
+
     def on_process_complete():
         sync_use_case.execute()
 
@@ -90,6 +96,7 @@ def create_app() -> FastAPI:
         toggle_step_use_case, update_status_use_case, add_comment_use_case,
         run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case,
         record_event_use_case, get_events_use_case,
+        save_profile_use_case, get_profiles_use_case,
         media_service
     )
 
