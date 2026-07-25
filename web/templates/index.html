@@ -41,9 +41,7 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-full flex flex-col antialiased selection:bg-blue-500 selection:text-white">
 
-  <!-- ============================================================ -->
-<!-- HEADER PRINCIPAL -->
-  <!-- ============================================================ -->
+  <!-- HEADER PRINCIPAL -->
   <header class="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 shadow-lg">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       
@@ -62,6 +60,12 @@
 
       <!-- Action Buttons -->
       <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Indicador de Execução & Botão Parar -->
+        <button id="btn-stop-process" onclick="stopProcess()" class="hidden px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-2 border border-rose-500/40 shadow-lg shadow-rose-600/30 transition animate-pulse">
+          <i data-lucide="square" class="w-4 h-4 fill-white"></i>
+          <span id="lbl-running-process">Parar Execução</span>
+        </button>
+
         <button onclick="syncData()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
           <i data-lucide="refresh-cw" class="w-4 h-4 text-blue-400"></i>
           <span>Sincronizar</span>
@@ -89,9 +93,7 @@
     </div>
   </header>
 
-  <!-- ============================================================ -->
-<!-- CONTEÚDO PRINCIPAL -->
-  <!-- ============================================================ -->
+  <!-- CONTEÚDO PRINCIPAL -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
     <!-- KPI / Status Counter Cards -->
@@ -175,9 +177,7 @@
 
   </main>
 
-  <!-- ============================================================ -->
-<!-- MODAL DE DETALHES DA ESTRATÉGIA -->
-  <!-- ============================================================ -->
+  <!-- MODAL DE DETALHES DA ESTRATÉGIA -->
   <div id="modal-detail" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
@@ -251,9 +251,7 @@
     </div>
   </div>
 
-  <!-- ============================================================ -->
-<!-- MODAL DE EVENTOS DE TELEMETRIA & ERROS NO MONGODB -->
-  <!-- ============================================================ -->
+  <!-- MODAL DE EVENTOS DE TELEMETRIA & ERROS NO MONGODB -->
   <div id="modal-events" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
@@ -328,7 +326,14 @@
           <input type="text" id="scraper-url" placeholder="https://www.facebook.com/perfil.alvo"
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
         </div>
-        <div class="flex gap-4 text-xs text-slate-300">
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Limite de Scrolls (Máx)</label>
+          <input type="number" id="scraper-max-scrolls" value="50" min="1" max="500"
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="flex gap-4 text-xs text-slate-300 pt-1">
           <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" id="scraper-only-videos" class="rounded bg-slate-950 border-slate-800 text-blue-600">
             Apenas Vídeos
@@ -350,10 +355,16 @@
   <div id="modal-logs" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-4 shadow-2xl">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="terminal" class="w-5 h-5 text-blue-400"></i> Terminal de Execução do Pipeline
-        </h3>
-        <button onclick="closeModal('modal-logs')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <div class="flex items-center gap-2">
+          <i data-lucide="terminal" class="w-5 h-5 text-blue-400"></i>
+          <h3 class="text-base font-bold text-white">Terminal de Execução do Pipeline</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="modal-btn-stop" onclick="stopProcess()" class="hidden px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1">
+            <i data-lucide="square" class="w-3.5 h-3.5 fill-white"></i> Parar Execução
+          </button>
+          <button onclick="closeModal('modal-logs')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
       </div>
       <div id="logs-terminal" class="bg-slate-950 p-4 rounded-xl font-mono text-xs text-emerald-400 h-80 overflow-y-auto border border-slate-800 space-y-1">
         <p class="text-slate-500">[Nenhum log ativo no momento]</p>
@@ -372,7 +383,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       loadStrategies();
-      setInterval(checkProcessStatus, 3000);
+      setInterval(checkProcessStatus, 2500);
     });
 
     async function loadStrategies() {
@@ -582,7 +593,6 @@
       } catch (err) {}
     }
 
-    // Carregar Eventos e Erros do MongoDB
     async function loadEvents() {
       let url = `/api/execution-events?limit=50&`;
       if (currentEventSource) url += `source=${currentEventSource}&`;
@@ -655,14 +665,30 @@
 
     async function startScraper() {
       const url = document.getElementById('scraper-url').value.trim();
+      const maxScrolls = parseInt(document.getElementById('scraper-max-scrolls').value, 10) || 50;
       if (!url) return alert('Digite a URL');
       try {
         const res = await fetch('/api/run-scraper', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_url: url, only_videos: document.getElementById('scraper-only-videos').checked, only_images: document.getElementById('scraper-only-images').checked })
+          body: JSON.stringify({
+            target_url: url,
+            max_scrolls: maxScrolls,
+            only_videos: document.getElementById('scraper-only-videos').checked,
+            only_images: document.getElementById('scraper-only-images').checked
+          })
         });
         if (res.ok) { closeModal('modal-scraper'); openLogsModal(); }
+      } catch (err) { alert(err); }
+    }
+
+    async function stopProcess() {
+      if (!confirm('Deseja realmente interromper a execução do processo atual?')) return;
+      try {
+        const res = await fetch('/api/stop-process', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message);
+        checkProcessStatus();
       } catch (err) { alert(err); }
     }
 
@@ -671,9 +697,22 @@
         const res = await fetch('/api/process-status');
         const data = await res.json();
         const terminal = document.getElementById('logs-terminal');
-        if (data.running && data.logs.length > 0) {
-          terminal.innerHTML = data.logs.map(l => `<p>${l}</p>`).join('');
-          terminal.scrollTop = terminal.scrollHeight;
+        const btnStop = document.getElementById('btn-stop-process');
+        const modalBtnStop = document.getElementById('modal-btn-stop');
+        const lblRunning = document.getElementById('lbl-running-process');
+
+        if (data.running) {
+          btnStop.classList.remove('hidden');
+          modalBtnStop.classList.remove('hidden');
+          lblRunning.innerText = `Parar ${data.name || 'Execução'}`;
+
+          if (data.logs.length > 0) {
+            terminal.innerHTML = data.logs.map(l => `<p>${l}</p>`).join('');
+            terminal.scrollTop = terminal.scrollHeight;
+          }
+        } else {
+          btnStop.classList.add('hidden');
+          modalBtnStop.classList.add('hidden');
         }
       } catch (e) {}
     }

@@ -155,15 +155,37 @@ class FacebookScraper:
         self.history_file = self.output_metadata / "download_history.json"
         self.downloaded_history = self._load_download_history()
 
+    def _init_mongo_client(self):
+        try:
+            from pymongo import MongoClient
+            mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+            db = client["pipelineface"]
+            return db["download_history"]
+        except Exception:
+            return None
+
     def _load_download_history(self) -> set:
-        """Carrega o histórico de URLs e hashes já baixados."""
+        """Carrega o histórico de URLs e hashes já baixados do MongoDB."""
+        history = set()
+        mongo_col = self._init_mongo_client()
+        if mongo_col is not None:
+            try:
+                for doc in mongo_col.find({}, {"url": 1, "url_hash": 1}):
+                    if "url" in doc: history.add(doc["url"])
+                    if "url_hash" in doc: history.add(doc["url_hash"])
+                if history:
+                    return history
+            except Exception:
+                pass
+
         if self.history_file.exists():
             try:
                 data = json.loads(self.history_file.read_text(encoding="utf-8"))
                 return set(data.get("downloaded_urls", []))
             except Exception:
                 return set()
-        return set()
+        return history
 
     def _save_download_history(self):
         """Salva o histórico atualizado de downloads."""
@@ -174,10 +196,29 @@ class FacebookScraper:
         }
         self.history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _mark_as_downloaded(self, url: str):
-        """Marca uma URL/Mídia como baixada no histórico."""
+    def _mark_as_downloaded(self, url: str, filename: str = None, media_type: str = None):
+        """Marca uma URL/Mídia como baixada no MongoDB e no histórico local."""
+        url_hash = self._url_hash(url)
         self.downloaded_history.add(url)
-        self.downloaded_history.add(self._url_hash(url))
+        self.downloaded_history.add(url_hash)
+
+        mongo_col = self._init_mongo_client()
+        if mongo_col is not None:
+            try:
+                mongo_col.update_one(
+                    {"url_hash": url_hash},
+                    {"$set": {
+                        "url": url,
+                        "url_hash": url_hash,
+                        "filename": filename,
+                        "media_type": media_type,
+                        "downloaded_at": datetime.now().isoformat()
+                    }},
+                    upsert=True
+                )
+            except Exception:
+                pass
+
         self._save_download_history()
 
     def _is_already_downloaded(self, url: str, target_filepath: Path = None) -> bool:

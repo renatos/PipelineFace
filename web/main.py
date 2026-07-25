@@ -20,7 +20,7 @@ from web.application.strategy_use_cases import (
     GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
 )
 from web.application.process_use_case import (
-    RunPipelineUseCase, RunScraperUseCase, GetProcessStatusUseCase,
+    RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
     RecordExecutionEventUseCase, GetExecutionEventsUseCase
 )
 from web.presentation.routes import router as api_router, init_routes
@@ -73,7 +73,6 @@ def create_app() -> FastAPI:
     record_event_use_case = RecordExecutionEventUseCase(event_repo)
     get_events_use_case = GetExecutionEventsUseCase(event_repo)
 
-    # Callback para auto-sincronização após término de processo
     def on_process_complete():
         sync_use_case.execute()
 
@@ -82,13 +81,14 @@ def create_app() -> FastAPI:
 
     run_pipeline_use_case = RunPipelineUseCase(run_proc)
     run_scraper_use_case = RunScraperUseCase(run_proc)
+    stop_process_use_case = StopProcessUseCase(process_runner.terminate_process)
     get_process_status_use_case = GetProcessStatusUseCase(process_runner.get_status)
 
     # 3. Inicialização e Injeção das Rotas de Apresentação
     init_routes(
         sync_use_case, get_strategies_use_case, get_detail_use_case,
         toggle_step_use_case, update_status_use_case, add_comment_use_case,
-        run_pipeline_use_case, run_scraper_use_case, get_process_status_use_case,
+        run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case,
         record_event_use_case, get_events_use_case,
         media_service
     )

@@ -15,7 +15,7 @@ from web.application.strategy_use_cases import (
     GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
 )
 from web.application.process_use_case import (
-    RunPipelineUseCase, RunScraperUseCase, GetProcessStatusUseCase,
+    RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
     RecordExecutionEventUseCase, GetExecutionEventsUseCase
 )
 from web.infrastructure.media_service import MediaStreamingService
@@ -64,6 +64,7 @@ update_status_use_case: UpdateStatusUseCase = None
 add_comment_use_case: AddCommentUseCase = None
 run_pipeline_use_case: RunPipelineUseCase = None
 run_scraper_use_case: RunScraperUseCase = None
+stop_process_use_case: StopProcessUseCase = None
 get_process_status_use_case: GetProcessStatusUseCase = None
 record_event_use_case: RecordExecutionEventUseCase = None
 get_events_use_case: GetExecutionEventsUseCase = None
@@ -73,13 +74,13 @@ media_service: MediaStreamingService = None
 def init_routes(
     _sync_use_case, _get_strategies_use_case, _get_detail_use_case,
     _toggle_step_use_case, _update_status_use_case, _add_comment_use_case,
-    _run_pipeline_use_case, _run_scraper_use_case, _get_process_status_use_case,
+    _run_pipeline_use_case, _run_scraper_use_case, _stop_process_use_case, _get_process_status_use_case,
     _record_event_use_case, _get_events_use_case,
     _media_service
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
     global toggle_step_use_case, update_status_use_case, add_comment_use_case
-    global run_pipeline_use_case, run_scraper_use_case, get_process_status_use_case
+    global run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case
     global record_event_use_case, get_events_use_case
     global media_service
 
@@ -91,6 +92,7 @@ def init_routes(
     add_comment_use_case = _add_comment_use_case
     run_pipeline_use_case = _run_pipeline_use_case
     run_scraper_use_case = _run_scraper_use_case
+    stop_process_use_case = _stop_process_use_case
     get_process_status_use_case = _get_process_status_use_case
     record_event_use_case = _record_event_use_case
     get_events_use_case = _get_events_use_case
@@ -99,7 +101,6 @@ def init_routes(
 
 @router.post("/api/webhooks/execution-event")
 def webhook_execution_event(payload: ExecutionEventRequest):
-    """Webhook para receber eventos de telemetria e erros dos scripts."""
     event = ExecutionEvent(
         run_id=payload.run_id,
         source=payload.source,
@@ -122,7 +123,6 @@ def get_execution_events(
     status: Optional[str] = Query(None),
     limit: int = Query(50)
 ):
-    """Lista o histórico de eventos e erros gravados no MongoDB."""
     events = get_events_use_case.execute(source=source, status=status, limit=limit)
     return {"count": len(events), "events": [e.model_dump() for e in events]}
 
@@ -221,6 +221,12 @@ def run_scraper(payload: ScraperRequest, background_tasks: BackgroundTasks):
         payload.target_url, payload.only_videos, payload.only_images, payload.max_scrolls
     )
     return {"status": "started", "message": f"Scraper iniciado para {payload.target_url}"}
+
+
+@router.post("/api/stop-process")
+def stop_process():
+    res = stop_process_use_case.execute()
+    return res
 
 
 @router.get("/api/process-status")

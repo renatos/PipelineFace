@@ -109,6 +109,19 @@ class KnowledgePipeline:
 
     def get_processed_basenames(self) -> set[str]:
         processed = set()
+        try:
+            from pymongo import MongoClient
+            mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+            db = client["pipelineface"]
+            for doc in db["seo_knowledge"].find({}, {"basename": 1}):
+                if "basename" in doc:
+                    processed.add(doc["basename"])
+            if processed:
+                return processed
+        except Exception:
+            pass
+
         if self.output_dir.exists():
             for f in self.output_dir.glob("*.json"):
                 processed.add(f.stem)

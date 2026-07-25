@@ -1,7 +1,7 @@
 """
 Process & Telemetry Use Cases — PipelineFace (Clean Architecture)
 =================================================================
-Casos de uso para execução, captura de webhooks de telemetria e consulta de erros no MongoDB.
+Casos de uso para execução, interrupção, captura de webhooks de telemetria e consulta de erros no MongoDB.
 """
 
 from typing import Dict, Any, Callable, List, Optional
@@ -46,6 +46,14 @@ class RunScraperUseCase:
 
         self.run_process_func(cmd, "Scraper Facebook")
         return {"status": "started", "message": f"Scraper iniciado para {target_url}"}
+
+
+class StopProcessUseCase:
+    def __init__(self, stop_process_func: Callable[[], Dict[str, str]]):
+        self.stop_process_func = stop_process_func
+
+    def execute(self) -> Dict[str, str]:
+        return self.stop_process_func()
 
 
 class GetProcessStatusUseCase:
