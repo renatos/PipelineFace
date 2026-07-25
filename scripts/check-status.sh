@@ -10,25 +10,22 @@ NC='\033[0m'
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
-echo -e "${BLUE}=== Status dos Contêineres ===${NC}"
-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "n8n|ollama|whisper|postgres|NAMES"
+echo -e "${BLUE}=== Status dos Contêineres (Scraper & Whisper) ===${NC}"
+podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "scraper|whisper|NAMES" || docker ps 2>/dev/null
 
 echo -e "\n${BLUE}=== Uso de Recursos ===${NC}"
-podman stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" | grep -E "n8n|ollama|whisper|postgres|NAME"
+podman stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" | grep -E "scraper|whisper|NAME" || true
 
-echo -e "\n${BLUE}=== Modelos Ollama Disponíveis ===${NC}"
-OLLAMA_CONTAINER=$(podman ps --format '{{.Names}}' | grep -i ollama | head -n 1)
-if [ -z "$OLLAMA_CONTAINER" ]; then
-    OLLAMA_CONTAINER="ollama"
-fi
-
-if podman ps | grep -q "$OLLAMA_CONTAINER"; then
-    podman exec "$OLLAMA_CONTAINER" ollama list
+echo -e "\n${BLUE}=== Status do Ollama (Host Nativo) ===${NC}"
+if curl -s http://localhost:11434/api/tags >/dev/null; then
+    echo -e "${GREEN}✅ API do Ollama respondendo em http://localhost:11434${NC}"
+    echo "Modelos disponíveis:"
+    curl -s http://localhost:11434/api/tags | python3 -c "import sys, json; print('\n'.join(['  - ' + m['name'] for m in json.load(sys.stdin).get('models', [])]))"
 else
-    echo -e "${RED}O container do Ollama não está em execução.${NC}"
+    echo -e "${RED}❌ Ollama não está respondendo em http://localhost:11434${NC}"
 fi
 
-echo -e "\n${BLUE}=== Contagem de Arquivos ===${NC}"
+echo -e "\n${BLUE}=== Contagem de Arquivos do Pipeline ===${NC}"
 count_files() {
     local dir=$1
     if [ -d "$dir" ]; then
