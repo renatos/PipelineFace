@@ -421,6 +421,12 @@
       lucide.createIcons();
       loadStrategies();
       setInterval(checkProcessStatus, 2500);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          ['modal-detail', 'modal-events', 'modal-error-detail', 'modal-scraper', 'modal-logs'].forEach(id => closeModal(id));
+        }
+      });
     });
 
     async function loadStrategies() {
