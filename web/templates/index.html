@@ -724,9 +724,23 @@
 
     async function runPipeline() {
       try {
+        const statusRes = await fetch('/api/process-status');
+        const statusData = await statusRes.json();
+        if (statusData.running) {
+          openLogsModal();
+          return;
+        }
+
         const res = await fetch('/api/run-pipeline', { method: 'POST' });
         if (res.ok) openLogsModal();
-        else { const d = await res.json(); alert(d.detail); }
+        else {
+          const d = await res.json();
+          if (d.detail && d.detail.includes('já está em execução')) {
+            openLogsModal();
+          } else {
+            alert(d.detail);
+          }
+        }
       } catch (err) { alert(err); }
     }
 
@@ -751,7 +765,12 @@
           checkProcessStatus();
         } else {
           const d = await res.json();
-          alert(d.detail || 'Erro ao iniciar o scraper.');
+          if (d.detail && d.detail.includes('já está em execução')) {
+            closeModal('modal-scraper');
+            openLogsModal();
+          } else {
+            alert(d.detail || 'Erro ao iniciar o scraper.');
+          }
         }
       } catch (err) { alert('Erro na comunicação com o servidor: ' + err); }
     }
