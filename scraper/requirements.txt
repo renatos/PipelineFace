@@ -1,0 +1,5 @@
+playwright>=1.48.0
+yt-dlp>=2024.12.0
+requests>=2.31.0
+Pillow>=10.0.0
+rich>=13.0.0

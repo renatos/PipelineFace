@@ -1,0 +1,20 @@
+# Dados persistentes dos containers
+n8n-data/
+ollama-data/
+postgres-data/
+
+# Dados de processamento e saída
+data/processing/
+data/output/
+data/scraper/session/
+data/input/
+
+# Configuração sensível
+.env
+
+# Geral
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+
