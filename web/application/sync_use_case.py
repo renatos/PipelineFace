@@ -85,6 +85,7 @@ class SyncKnowledgeUseCase:
                         filename=filename,
                         type=filetype,
                         extension=source_file.get("extension", ""),
+                        url=source_file.get("url"),
                         media_url=media_url,
                         duration_seconds=source_file.get("duration_seconds"),
                         size_bytes=size_bytes

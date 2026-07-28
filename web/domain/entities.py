@@ -8,10 +8,23 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
+class AppConfig(BaseModel):
+    """Parâmetro de configuração do sistema, armazenado na coleção app_config."""
+    key: str
+    group: str  # "pipeline" | "models" | "scraper" | "system"
+    value: str
+    value_type: str = "string"  # "string" | "int" | "float" | "bool"
+    label: str
+    description: str = ""
+    editable: bool = True
+    updated_at: Optional[str] = None
+
+
 class InputFile(BaseModel):
     filename: str
     type: str  # "video" | "image"
     extension: str
+    url: Optional[str] = None
     media_url: Optional[str] = None
     duration_seconds: Optional[int] = None
     size_bytes: Optional[int] = None
@@ -73,6 +86,20 @@ class ExecutionEvent(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
     error_details: Optional[str] = None
     created_at: str
+
+
+class PipelineRun(BaseModel):
+    """Representa uma execução completa do Pipeline ou Scraper identificada por run_id."""
+    run_id: str
+    source: str  # "pipeline" | "scraper"
+    status: str = "in_progress"  # "in_progress" | "completed" | "error"
+    target_url: Optional[str] = None  # Para execuções do scraper
+    started_at: str
+    finished_at: Optional[str] = None
+    total_files: int = 0
+    success_files: int = 0
+    error_files: int = 0
+    error_count: int = 0
 
 
 class TargetProfile(BaseModel):

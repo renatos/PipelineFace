@@ -7,16 +7,63 @@ Implementação concreta dos repositórios de estratégias, telemetria e perfis 
 import re
 import uuid
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 from pymongo import MongoClient
 
 from web.domain.entities import (
-    Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment, ExecutionEvent, TargetProfile
+    AppConfig, Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment,
+    ExecutionEvent, PipelineRun, TargetProfile
 )
 from web.domain.repositories import (
-    AbstractStrategyRepository, AbstractExecutionEventRepository, AbstractTargetProfileRepository
+    AbstractAppConfigRepository, AbstractStrategyRepository, AbstractExecutionEventRepository,
+    AbstractPipelineRunRepository, AbstractTargetProfileRepository
 )
+
+
+# Valores padrão que serão inseridos na coleção app_config na primeira execução
+APP_CONFIG_DEFAULTS = [
+    # --- Pipeline ---
+    {"key": "whisper_url", "group": "pipeline", "value": "http://localhost:9000/asr",
+     "value_type": "string", "label": "URL do Whisper",
+     "description": "Endpoint do serviço Whisper para transcrição de áudio"},
+    {"key": "ollama_url", "group": "pipeline", "value": "http://localhost:11434/api/chat",
+     "value_type": "string", "label": "URL do Ollama",
+     "description": "Endpoint da API de chat do Ollama"},
+    {"key": "webhook_url", "group": "pipeline", "value": "http://localhost:8000/api/webhooks/execution-event",
+     "value_type": "string", "label": "URL do Webhook de Telemetria",
+     "description": "Endpoint da Web API para receber eventos de execução"},
+    # --- Modelos ---
+    {"key": "vision_model", "group": "models", "value": "moondream",
+     "value_type": "string", "label": "Modelo de Visão (frames)",
+     "description": "Modelo Ollama usado para análise visual de frames e imagens"},
+    {"key": "text_model", "group": "models", "value": "qwen2.5:3b",
+     "value_type": "string", "label": "Modelo de Texto (SEO)",
+     "description": "Modelo Ollama usado para extração de conhecimento em SEO"},
+    {"key": "whisper_model", "group": "models", "value": "base",
+     "value_type": "string", "label": "Modelo Whisper",
+     "description": "Tamanho do modelo Whisper: tiny, base, small, medium, large"},
+    # --- Scraper ---
+    {"key": "scraper_max_scrolls", "group": "scraper", "value": "50",
+     "value_type": "int", "label": "Máx. Scrolls do Scraper",
+     "description": "Número máximo de scrolls por sessão de coleta"},
+    {"key": "scraper_scroll_pause", "group": "scraper", "value": "2.5",
+     "value_type": "float", "label": "Pausa entre Scrolls (seg)",
+     "description": "Segundos de espera entre cada scroll para carregamento de conteúdo"},
+    {"key": "scraper_session_dir", "group": "scraper", "value": "/data/scraper/session",
+     "value_type": "string", "label": "Diretório de Sessão",
+     "description": "Caminho onde os cookies/sessão do navegador são armazenados"},
+    # --- Sistema ---
+    {"key": "pipeline_version", "group": "system", "value": "3.0.0",
+     "value_type": "string", "label": "Versão do Pipeline",
+     "description": "Versão atual do pipeline de extração", "editable": False},
+    {"key": "fps_frame_extraction", "group": "pipeline", "value": "1/10",
+     "value_type": "string", "label": "Taxa de Frames (FFmpeg)",
+     "description": "Taxa de extração de frames do vídeo (ex: 1/10 = 1 frame a cada 10s)"},
+    {"key": "max_ocr_frames", "group": "pipeline", "value": "3",
+     "value_type": "int", "label": "Máx. Frames para OCR",
+     "description": "Número máximo de frames enviados para análise de texto (OCR) por vídeo"},
+]
 
 
 class MongoStrategyRepository(AbstractStrategyRepository):
@@ -136,11 +183,14 @@ class MongoExecutionEventRepository(AbstractExecutionEventRepository):
 
     def list_events(
         self,
+        run_id: Optional[str] = None,
         source: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50
     ) -> List[ExecutionEvent]:
         query = {}
+        if run_id:
+            query["run_id"] = run_id
         if source:
             query["source"] = source
         if status:
@@ -148,6 +198,36 @@ class MongoExecutionEventRepository(AbstractExecutionEventRepository):
 
         docs = list(self.collection.find(query, {"_id": 0}).sort("created_at", -1).limit(limit))
         return [ExecutionEvent(**d) for d in docs]
+
+
+class MongoPipelineRunRepository(AbstractPipelineRunRepository):
+    def __init__(self, mongo_uri: str = "mongodb://localhost:27017", db_name: str = "pipelineface", collection_name: str = "pipeline_runs"):
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+        # Garantir índice único em run_id
+        self.collection.create_index("run_id", unique=True, sparse=True)
+
+    def save_or_update(self, run: PipelineRun) -> None:
+        doc = run.model_dump()
+        self.collection.update_one(
+            {"run_id": run.run_id},
+            {"$set": doc},
+            upsert=True
+        )
+
+    def find_by_run_id(self, run_id: str) -> Optional[PipelineRun]:
+        doc = self.collection.find_one({"run_id": run_id}, {"_id": 0})
+        if not doc:
+            return None
+        return PipelineRun(**doc)
+
+    def list_runs(self, source: Optional[str] = None, limit: int = 20) -> List[PipelineRun]:
+        query = {}
+        if source:
+            query["source"] = source
+        docs = list(self.collection.find(query, {"_id": 0}).sort("started_at", -1).limit(limit))
+        return [PipelineRun(**d) for d in docs]
 
 
 class MongoTargetProfileRepository(AbstractTargetProfileRepository):
@@ -187,3 +267,47 @@ class MongoTargetProfileRepository(AbstractTargetProfileRepository):
     def list_profiles(self, limit: int = 20) -> List[TargetProfile]:
         docs = list(self.collection.find({}, {"_id": 0}).sort("last_scraped_at", -1).limit(limit))
         return [TargetProfile(**d) for d in docs]
+
+
+class MongoAppConfigRepository(AbstractAppConfigRepository):
+    def __init__(self, mongo_uri: str = "mongodb://localhost:27017", db_name: str = "pipelineface", collection_name: str = "app_config"):
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+        # Índice único por key
+        self.collection.create_index("key", unique=True, sparse=True)
+        # Popular com valores padrão na primeira inicialização
+        self.seed_defaults()
+
+    def seed_defaults(self) -> None:
+        """Insere os parâmetros padrão apenas se ainda não existirem na coleção."""
+        now = datetime.now().isoformat()
+        for cfg in APP_CONFIG_DEFAULTS:
+            self.collection.update_one(
+                {"key": cfg["key"]},
+                {"$setOnInsert": {**cfg, "editable": cfg.get("editable", True), "updated_at": now}},
+                upsert=True
+            )
+
+    def list_all(self, group: Optional[str] = None) -> List[AppConfig]:
+        query = {"group": group} if group else {}
+        # Ordenar por grupo e depois label para exibição agrupada
+        docs = list(self.collection.find(query, {"_id": 0}).sort([("group", 1), ("label", 1)]))
+        return [AppConfig(**d) for d in docs]
+
+    def get(self, key: str) -> Optional[AppConfig]:
+        doc = self.collection.find_one({"key": key}, {"_id": 0})
+        return AppConfig(**doc) if doc else None
+
+    def update(self, key: str, value: str) -> Optional[AppConfig]:
+        result = self.collection.find_one_and_update(
+            {"key": key, "editable": True},
+            {"$set": {"value": value, "updated_at": datetime.now().isoformat()}},
+            return_document=True,
+            projection={"_id": 0}
+        )
+        return AppConfig(**result) if result else None
+
+    def as_dict(self) -> Dict[str, str]:
+        """Retorna todos os parâmetros como dicionário key -> value (string bruto)."""
+        return {doc["key"]: doc["value"] for doc in self.collection.find({}, {"_id": 0, "key": 1, "value": 1})}

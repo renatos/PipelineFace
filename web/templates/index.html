@@ -89,6 +89,10 @@
         <button onclick="openLogsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition" title="Ver Logs em Tempo Real">
           <i data-lucide="terminal" class="w-4 h-4"></i>
         </button>
+
+        <button onclick="openConfigPanel()" id="btn-config" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition" title="Configurações do Sistema">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
       </div>
     </div>
   </header>
@@ -193,10 +197,11 @@
       <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div class="lg:col-span-5 space-y-5 border-b lg:border-b-0 lg:border-r border-slate-800 pb-6 lg:pb-0 lg:pr-6">
           <div>
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
-              <i data-lucide="film" class="w-4 h-4 text-blue-400"></i> Mídia de Entrada Original
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><i data-lucide="film" class="w-4 h-4 text-blue-400"></i> Mídia de Entrada</span>
+              <span id="modal-original-link-container"></span>
             </h4>
-            <div id="modal-media-container" class="rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center"></div>
+            <div id="modal-media-container" class="rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2"></div>
           </div>
 
           <div>
@@ -462,9 +467,17 @@
 
         const title = knowledge.titulo_estrategia || item.basename;
         const resumo = knowledge.resumo_executivo || 'Sem resumo.';
-        const ferramentas = knowledge.ferramentas_e_telas_utilizadas || [];
+        let ferramentas = knowledge.ferramentas_e_telas_utilizadas || [];
+        if (typeof ferramentas === 'string') {
+          ferramentas = ferramentas.split(',').map(s => s.trim());
+        } else if (!Array.isArray(ferramentas)) {
+          ferramentas = [];
+        }
+
         const status = impl.status || 'pendente';
-        const totalSteps = (knowledge.passo_a_passo_detalhado || []).length;
+        let passoAPasso = knowledge.passo_a_passo_detalhado || [];
+        if (!Array.isArray(passoAPasso)) passoAPasso = [];
+        const totalSteps = passoAPasso.length;
         const doneSteps = (impl.completed_steps || []).length;
         const progressPct = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : 0;
 
@@ -530,12 +543,34 @@
         document.getElementById('modal-aplicacao').innerText = knowledge.aplicacao_no_negocio || 'Aplique para ranquear melhor.';
         document.getElementById('modal-select-status').value = impl.status || 'pendente';
 
+        const originalLinkContainer = document.getElementById('modal-original-link-container');
+        if (input.url) {
+          originalLinkContainer.innerHTML = `<a href="${input.url}" target="_blank" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline flex items-center gap-1"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Facebook Original</a>`;
+        } else {
+          originalLinkContainer.innerHTML = '';
+        }
+
         const mediaContainer = document.getElementById('modal-media-container');
         mediaContainer.innerHTML = '';
         if (input.media_url) {
           mediaContainer.innerHTML = input.type === 'video' ?
             `<video controls src="${input.media_url}" class="w-full h-full object-contain"></video>` :
             `<img src="${input.media_url}" class="w-full h-full object-contain">`;
+        } else {
+          let fallbackHtml = `
+            <div class="text-center p-4 space-y-2">
+              <i data-lucide="hard-drive-download" class="w-8 h-8 text-slate-500 mx-auto"></i>
+              <p class="text-xs text-slate-400 font-medium">Arquivo bruto removido para liberar espaço em disco.</p>
+          `;
+          if (input.url) {
+            fallbackHtml += `
+              <a href="${input.url}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition mt-1">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Abrir Post no Facebook
+              </a>
+            `;
+          }
+          fallbackHtml += `</div>`;
+          mediaContainer.innerHTML = fallbackHtml;
         }
 
         const framesContainer = document.getElementById('modal-frames-container');
@@ -850,6 +885,213 @@
     function openScraperModal() { loadRecentProfiles(); document.getElementById('modal-scraper').classList.remove('hidden'); }
     function openLogsModal() { document.getElementById('modal-logs').classList.remove('hidden'); }
     function openEventsModal() { loadEvents(); document.getElementById('modal-events').classList.remove('hidden'); }
+
+    // ============================================================
+    // PAINEL DE CONFIGURAÇÕES
+    // ============================================================
+    const GROUP_META = {
+      pipeline: { label: 'Pipeline', icon: 'cpu', color: 'text-blue-400', border: 'border-blue-500/30', bg: 'bg-blue-500/5' },
+      models:   { label: 'Modelos IA', icon: 'brain', color: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-500/5' },
+      scraper:  { label: 'Scraper', icon: 'bot', color: 'text-emerald-400', border: 'border-emerald-500/30', bg: 'bg-emerald-500/5' },
+      system:   { label: 'Sistema', icon: 'shield', color: 'text-slate-400', border: 'border-slate-600/30', bg: 'bg-slate-800/30' },
+    };
+    let allConfigs = [];
+
+    function openConfigPanel() {
+      const panel = document.getElementById('config-panel');
+      const overlay = document.getElementById('config-overlay');
+      panel.classList.remove('translate-x-full');
+      overlay.classList.remove('hidden');
+      loadConfigs();
+    }
+
+    function closeConfigPanel() {
+      document.getElementById('config-panel').classList.add('translate-x-full');
+      document.getElementById('config-overlay').classList.add('hidden');
+    }
+
+    async function loadConfigs() {
+      const container = document.getElementById('config-groups');
+      container.innerHTML = `<div class="flex items-center justify-center py-12 text-slate-500">
+        <i data-lucide="loader" class="w-5 h-5 animate-spin mr-2"></i><span>Carregando...</span></div>`;
+      lucide.createIcons();
+      try {
+        const res = await fetch('/api/configs');
+        const data = await res.json();
+        allConfigs = data.configs;
+        renderConfigGroups(allConfigs);
+      } catch(e) {
+        container.innerHTML = `<p class="text-rose-400 text-sm text-center py-8">Erro ao carregar configurações.</p>`;
+      }
+    }
+
+    function renderConfigGroups(configs) {
+      const container = document.getElementById('config-groups');
+      const grouped = {};
+      configs.forEach(c => {
+        if (!grouped[c.group]) grouped[c.group] = [];
+        grouped[c.group].push(c);
+      });
+
+      const groupOrder = ['pipeline', 'models', 'scraper', 'system'];
+      let html = '';
+      groupOrder.forEach(gKey => {
+        if (!grouped[gKey]) return;
+        const meta = GROUP_META[gKey] || { label: gKey, icon: 'settings', color: 'text-slate-400', border: 'border-slate-700', bg: 'bg-slate-800/20' };
+        html += `
+          <div class="mb-3">
+            <button onclick="toggleConfigGroup('cg-${gKey}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg ${meta.bg} border ${meta.border} hover:brightness-110 transition group">
+              <div class="flex items-center gap-2">
+                <i data-lucide="${meta.icon}" class="w-4 h-4 ${meta.color}"></i>
+                <span class="text-sm font-semibold ${meta.color}">${meta.label}</span>
+                <span class="text-xs text-slate-500 font-normal">(${grouped[gKey].length})</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 transition-transform group-[.open]:rotate-180" id="chevron-cg-${gKey}"></i>
+            </button>
+            <div id="cg-${gKey}" class="mt-1 space-y-1 overflow-hidden transition-all duration-200">
+              ${grouped[gKey].map(cfg => renderConfigItem(cfg)).join('')}
+            </div>
+          </div>`;
+      });
+      container.innerHTML = html;
+      lucide.createIcons();
+
+      // Abrir todos os grupos por padrão (exceto system)
+      groupOrder.filter(g => g !== 'system' && grouped[g]).forEach(g => {
+        const el = document.getElementById(`cg-${g}`);
+        const btn = el?.previousElementSibling;
+        if (el) { el.style.maxHeight = el.scrollHeight + 'px'; btn?.classList.add('open'); }
+      });
+      // system fechado
+      const sysEl = document.getElementById('cg-system');
+      if (sysEl) sysEl.style.maxHeight = '0';
+    }
+
+    function renderConfigItem(cfg) {
+      const readOnly = !cfg.editable ? 'readonly disabled opacity-50 cursor-not-allowed' : '';
+      const inputId = `cfg-input-${cfg.key}`;
+      const typeAttr = (cfg.value_type === 'int' || cfg.value_type === 'float') ? 'number' : 'text';
+      const stepAttr = cfg.value_type === 'float' ? 'step="0.1"' : '';
+      return `
+        <div class="bg-slate-900/80 border border-slate-800/60 rounded-lg px-3 py-2.5 flex items-start gap-3" id="cfg-row-${cfg.key}">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-semibold text-slate-200">${cfg.label}</span>
+              ${!cfg.editable ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">somente leitura</span>' : ''}
+            </div>
+            ${cfg.description ? `<p class="text-[11px] text-slate-500 mb-1.5 leading-relaxed">${cfg.description}</p>` : ''}
+            <div class="flex items-center gap-2">
+              <input
+                id="${inputId}"
+                type="${typeAttr}" ${stepAttr}
+                value="${escHtml(cfg.value)}"
+                ${readOnly}
+                onkeydown="if(event.key==='Enter') saveConfig('${cfg.key}')"
+                class="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition ${readOnly ? 'opacity-50' : ''}"
+              />
+              ${cfg.editable ? `<button onclick="saveConfig('${cfg.key}')" id="btn-save-${cfg.key}" class="shrink-0 p-1.5 rounded-md bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 transition" title="Salvar">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              </button>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function toggleConfigGroup(id) {
+      const el = document.getElementById(id);
+      const btn = el?.previousElementSibling;
+      if (!el) return;
+      const isOpen = el.style.maxHeight && el.style.maxHeight !== '0px';
+      el.style.maxHeight = isOpen ? '0' : el.scrollHeight + 1000 + 'px';
+      btn?.classList.toggle('open', !isOpen);
+    }
+
+    async function saveConfig(key) {
+      const input = document.getElementById(`cfg-input-${key}`);
+      const btn = document.getElementById(`btn-save-${key}`);
+      if (!input) return;
+      const value = input.value.trim();
+      btn?.classList.add('opacity-50', 'pointer-events-none');
+      try {
+        const res = await fetch(`/api/configs/${key}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const updated = await res.json();
+        input.value = updated.value;
+        // Feedback visual de sucesso
+        const row = document.getElementById(`cfg-row-${key}`);
+        row?.classList.add('ring-1', 'ring-emerald-500/50');
+        setTimeout(() => row?.classList.remove('ring-1', 'ring-emerald-500/50'), 1500);
+      } catch(e) {
+        const row = document.getElementById(`cfg-row-${key}`);
+        row?.classList.add('ring-1', 'ring-rose-500/50');
+        setTimeout(() => row?.classList.remove('ring-1', 'ring-rose-500/50'), 1500);
+        alert('Erro ao salvar: ' + e.message);
+      } finally {
+        btn?.classList.remove('opacity-50', 'pointer-events-none');
+      }
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
   </script>
+
+  <!-- PAINEL LATERAL DE CONFIGURAÇÕES -->
+  <!-- Overlay escuro -->
+  <div id="config-overlay" onclick="closeConfigPanel()" class="hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"></div>
+
+  <!-- Drawer -->
+  <div id="config-panel" class="fixed top-0 right-0 h-full w-full max-w-sm z-50 bg-slate-900 border-l border-slate-800 shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    <!-- Header do painel -->
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+      <div class="flex items-center gap-2">
+        <div class="p-1.5 bg-slate-800 rounded-lg border border-slate-700">
+          <i data-lucide="settings" class="w-4 h-4 text-blue-400"></i>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold text-white">Configurações</h2>
+          <p class="text-[11px] text-slate-500">Parâmetros do sistema — salvos no MongoDB</p>
+        </div>
+      </div>
+      <button onclick="closeConfigPanel()" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Busca rápida -->
+    <div class="px-4 py-3 border-b border-slate-800 shrink-0">
+      <div class="relative">
+        <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500"></i>
+        <input type="text" id="config-search" oninput="filterConfigs(this.value)" placeholder="Filtrar parâmetros..."
+          class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+      </div>
+    </div>
+
+    <!-- Conteúdo scrollável -->
+    <div class="flex-1 overflow-y-auto px-4 py-4" id="config-groups"></div>
+
+    <!-- Footer -->
+    <div class="px-4 py-3 border-t border-slate-800 shrink-0">
+      <p class="text-[11px] text-slate-600 text-center">Pressione Enter ou clique ✓ para salvar cada parâmetro.<br>As alterações são aplicadas na próxima execução do pipeline.</p>
+    </div>
+  </div>
+
+  <script>
+    function filterConfigs(query) {
+      const q = query.toLowerCase();
+      const filtered = q ? allConfigs.filter(c =>
+        c.label.toLowerCase().includes(q) ||
+        c.key.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q) ||
+        c.value.toLowerCase().includes(q)
+      ) : allConfigs;
+      renderConfigGroups(filtered);
+    }
+  </script>
+
 </body>
 </html>

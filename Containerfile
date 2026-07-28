@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     curl \
     git \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,6 +23,7 @@ COPY . .
 ENV MONGO_URI="mongodb://localhost:27017"
 ENV WHISPER_URL="http://localhost:9000/asr"
 ENV OLLAMA_URL="http://localhost:11434/api/chat"
+ENV TZ="America/Sao_Paulo"
 
 EXPOSE 8000
 

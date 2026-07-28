@@ -32,7 +32,7 @@ if ! podman image exists pipelineface_app:latest; then
 fi
 
 podman rm -f pipelineface_web_app 2>/dev/null || true
-podman run -d --name pipelineface_web_app --network host -v "${PROJECT_DIR}:/app" pipelineface_app:latest >/dev/null
+podman run -d --name pipelineface_web_app -e TZ=America/Sao_Paulo --network host -v "${PROJECT_DIR}:/app" pipelineface_app:latest >/dev/null
 
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${GREEN}✅ Aplicação Web (FFmpeg + Playwright) e MongoDB ativos!${NC}"
