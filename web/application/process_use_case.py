@@ -5,8 +5,8 @@ Casos de uso para execução, interrupção, telemetria e gestão de histórico 
 """
 
 from typing import Dict, Any, Callable, List, Optional
-from web.domain.entities import ExecutionEvent, TargetProfile
-from web.domain.repositories import AbstractExecutionEventRepository, AbstractTargetProfileRepository
+from web.domain.entities import ExecutionEvent, PipelineRun, TargetProfile
+from web.domain.repositories import AbstractExecutionEventRepository, AbstractPipelineRunRepository, AbstractTargetProfileRepository
 
 
 class RecordExecutionEventUseCase:
@@ -21,8 +21,32 @@ class GetExecutionEventsUseCase:
     def __init__(self, repository: AbstractExecutionEventRepository):
         self.repository = repository
 
-    def execute(self, source: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> List[ExecutionEvent]:
-        return self.repository.list_events(source=source, status=status, limit=limit)
+    def execute(self, run_id: Optional[str] = None, source: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> List[ExecutionEvent]:
+        return self.repository.list_events(run_id=run_id, source=source, status=status, limit=limit)
+
+
+class SavePipelineRunUseCase:
+    def __init__(self, repository: AbstractPipelineRunRepository):
+        self.repository = repository
+
+    def execute(self, run: PipelineRun) -> None:
+        self.repository.save_or_update(run)
+
+
+class GetPipelineRunUseCase:
+    def __init__(self, repository: AbstractPipelineRunRepository):
+        self.repository = repository
+
+    def execute(self, run_id: str) -> Optional[PipelineRun]:
+        return self.repository.find_by_run_id(run_id)
+
+
+class ListPipelineRunsUseCase:
+    def __init__(self, repository: AbstractPipelineRunRepository):
+        self.repository = repository
+
+    def execute(self, source: Optional[str] = None, limit: int = 20) -> List[PipelineRun]:
+        return self.repository.list_runs(source=source, limit=limit)
 
 
 class SaveTargetProfileUseCase:

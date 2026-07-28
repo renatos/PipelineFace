@@ -5,8 +5,32 @@ Contrato abstrato de persistência para as estratégias, eventos e histórico de
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
-from web.domain.entities import Strategy, Comment, ExecutionEvent, TargetProfile
+from typing import Dict, List, Optional, Tuple
+from web.domain.entities import AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile
+
+
+class AbstractAppConfigRepository(ABC):
+    @abstractmethod
+    def seed_defaults(self) -> None:
+        """Garante que os parâmetros padrão existam na coleção."""
+        pass
+
+    @abstractmethod
+    def list_all(self, group: Optional[str] = None) -> List[AppConfig]:
+        pass
+
+    @abstractmethod
+    def get(self, key: str) -> Optional[AppConfig]:
+        pass
+
+    @abstractmethod
+    def update(self, key: str, value: str) -> Optional[AppConfig]:
+        pass
+
+    @abstractmethod
+    def as_dict(self) -> Dict[str, str]:
+        """Retorna dicionário key -> value para uso interno no pipeline/scraper."""
+        pass
 
 
 class AbstractStrategyRepository(ABC):
@@ -48,10 +72,25 @@ class AbstractExecutionEventRepository(ABC):
     @abstractmethod
     def list_events(
         self,
+        run_id: Optional[str] = None,
         source: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50
     ) -> List[ExecutionEvent]:
+        pass
+
+
+class AbstractPipelineRunRepository(ABC):
+    @abstractmethod
+    def save_or_update(self, run: PipelineRun) -> None:
+        pass
+
+    @abstractmethod
+    def find_by_run_id(self, run_id: str) -> Optional[PipelineRun]:
+        pass
+
+    @abstractmethod
+    def list_runs(self, source: Optional[str] = None, limit: int = 20) -> List[PipelineRun]:
         pass
 
 

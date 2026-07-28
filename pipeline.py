@@ -7,6 +7,7 @@ Processa vídeos e imagens coletados com telemetria via Webhooks e relatórios d
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -36,12 +37,33 @@ except ImportError:
     console = Console()
 
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parent
-WHISPER_URL = os.environ.get("WHISPER_URL", "http://localhost:9000/asr")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "http://localhost:8000/api/webhooks/execution-event")
+
+# Fallbacks padrão — usados quando o MongoDB não está disponível
+_ENV_DEFAULTS = {
+    "whisper_url":  os.environ.get("WHISPER_URL",  "http://localhost:9000/asr"),
+    "ollama_url":   os.environ.get("OLLAMA_URL",   "http://localhost:11434/api/chat"),
+    "webhook_url":  os.environ.get("WEBHOOK_URL",  "http://localhost:8000/api/webhooks/execution-event"),
+    "vision_model": os.environ.get("VISION_MODEL", "moondream"),
+    "text_model":   os.environ.get("TEXT_MODEL",   "qwen2.5:3b"),
+    "whisper_model":os.environ.get("WHISPER_MODEL","base"),
+    "fps_frame_extraction": "1/10",
+    "max_ocr_frames": "3",
+}
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+
+def _get_mongo_config() -> dict:
+    """Lê app_config do MongoDB. Retorna dict vazio se não conseguir conectar."""
+    try:
+        from pymongo import MongoClient
+        mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=1500)
+        docs = list(client["pipelineface"]["app_config"].find({}, {"_id": 0, "key": 1, "value": 1}))
+        return {d["key"]: d["value"] for d in docs}
+    except Exception:
+        return {}
 
 
 def send_telemetry_event(
@@ -51,9 +73,11 @@ def send_telemetry_event(
     filename: str = None,
     message: str = "",
     metrics: dict = None,
-    error_details: str = None
+    error_details: str = None,
+    webhook_url: str = None
 ):
     """Envia um evento de telemetria ou log de erro para a API Web (Webhook)."""
+    target_url = webhook_url or _ENV_DEFAULTS["webhook_url"]
     try:
         payload = {
             "run_id": run_id,
@@ -67,7 +91,7 @@ def send_telemetry_event(
         }
         req_data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            WEBHOOK_URL,
+            target_url,
             data=req_data,
             headers={"Content-Type": "application/json"},
             method="POST"
@@ -82,13 +106,22 @@ class KnowledgePipeline:
     def __init__(
         self,
         project_root: Path = DEFAULT_PROJECT_ROOT,
-        whisper_url: str = WHISPER_URL,
-        ollama_url: str = OLLAMA_URL,
+        whisper_url: str = None,
+        ollama_url: str = None,
     ):
         self.project_root = Path(project_root)
-        self.whisper_url = whisper_url
-        self.ollama_url = ollama_url
         self.run_id = str(uuid.uuid4())[:8]
+
+        # Carregar config do MongoDB, com fallback para env/defaults
+        cfg = _get_mongo_config()
+        self.whisper_url  = whisper_url  or cfg.get("whisper_url",  _ENV_DEFAULTS["whisper_url"])
+        self.ollama_url   = ollama_url   or cfg.get("ollama_url",   _ENV_DEFAULTS["ollama_url"])
+        self.webhook_url  = cfg.get("webhook_url",  _ENV_DEFAULTS["webhook_url"])
+        self.vision_model = cfg.get("vision_model", _ENV_DEFAULTS["vision_model"])
+        self.text_model   = cfg.get("text_model",   _ENV_DEFAULTS["text_model"])
+        self.whisper_model = cfg.get("whisper_model", _ENV_DEFAULTS["whisper_model"])
+        self.fps_extraction = cfg.get("fps_frame_extraction", _ENV_DEFAULTS["fps_frame_extraction"])
+        self.max_ocr_frames = int(cfg.get("max_ocr_frames", _ENV_DEFAULTS["max_ocr_frames"]))
 
         self.input_videos_dir = self.project_root / "data" / "input" / "videos"
         self.input_images_dir = self.project_root / "data" / "input" / "images"
@@ -107,20 +140,64 @@ class KnowledgePipeline:
         ]:
             d.mkdir(parents=True, exist_ok=True)
 
-    def get_processed_basenames(self) -> set[str]:
-        processed = set()
+    def get_mongo_db(self):
         try:
             from pymongo import MongoClient
             mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
             client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-            db = client["pipelineface"]
-            for doc in db["seo_knowledge"].find({}, {"basename": 1}):
-                if "basename" in doc:
-                    processed.add(doc["basename"])
-            if processed:
-                return processed
+            return client["pipelineface"]
         except Exception:
-            pass
+            return None
+
+    def get_original_url(self, filename: str, basename: str) -> str:
+        # 1. Tentar consultar MongoDB download_history
+        db = self.get_mongo_db()
+        if db is not None:
+            try:
+                url_hash = basename.replace("fb_", "")
+                doc = db["download_history"].find_one({
+                    "$or": [
+                        {"filename": filename},
+                        {"url_hash": url_hash},
+                        {"url_hash": basename}
+                    ]
+                })
+                if doc and doc.get("url"):
+                    return doc["url"]
+            except Exception:
+                pass
+
+        # 2. Fallback: consultar metadados salvos em data/input/metadata
+        metadata_dir = self.project_root / "data" / "input" / "metadata"
+        if metadata_dir.exists():
+            for meta_file in metadata_dir.glob("*.json"):
+                if meta_file.name == "download_history.json":
+                    continue
+                try:
+                    with open(meta_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    for item in data.get("videos", []) + data.get("images", []):
+                        item_url = item.get("url", "")
+                        if item_url:
+                            u_hash = hashlib.md5(item_url.encode()).hexdigest()[:12]
+                            if filename == f"fb_{u_hash}.jpg" or filename == f"fb_{u_hash}.mp4" or u_hash in basename:
+                                return item_url
+                except Exception:
+                    pass
+        return None
+
+    def get_processed_basenames(self) -> set[str]:
+        processed = set()
+        db = self.get_mongo_db()
+        if db is not None:
+            try:
+                for doc in db["seo_knowledge"].find({}, {"basename": 1}):
+                    if "basename" in doc:
+                        processed.add(doc["basename"])
+                if processed:
+                    return processed
+            except Exception:
+                pass
 
         if self.output_dir.exists():
             for f in self.output_dir.glob("*.json"):
@@ -229,16 +306,42 @@ class KnowledgePipeline:
             return f"[Erro Whisper: {e}]"
 
     def query_ollama(self, model: str, prompt: str, image_path: Path = None, system_prompt: str = None, json_format: bool = False) -> str:
+        # Se for modelo de visão com imagem, usar o endpoint /api/generate (que funciona confiavelmente com Moondream)
+        if image_path and image_path.exists():
+            with open(image_path, "rb") as img_f:
+                img_b64 = base64.b64encode(img_f.read()).decode("utf-8")
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "images": [img_b64],
+                "stream": False,
+                "options": {"temperature": 0.2}
+            }
+            generate_url = self.ollama_url.replace("/api/chat", "/api/generate")
+            req_data = json.dumps(payload).encode("utf-8")
+            max_retries = 3
+            last_error = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    req = urllib.request.Request(
+                        generate_url,
+                        data=req_data,
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=600) as resp:
+                        res = json.loads(resp.read().decode("utf-8"))
+                        return res.get("response", "").strip()
+                except Exception as e:
+                    last_error = e
+                    time.sleep(3 * attempt)
+            console.print(f"[red]❌ Erro na requisição de visão ao Ollama ({model}): {last_error}[/red]")
+            return ""
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-
-        user_msg = {"role": "user", "content": prompt}
-        if image_path and image_path.exists():
-            with open(image_path, "rb") as img_f:
-                user_msg["images"] = [base64.b64encode(img_f.read()).decode("utf-8")]
-
-        messages.append(user_msg)
+        messages.append({"role": "user", "content": prompt})
 
         payload = {
             "model": model,
@@ -317,11 +420,16 @@ class KnowledgePipeline:
 
             # 2. Checagem semântica Moondream (garante que contém tela/slide/sistema/texto)
             prompt_classify = (
-                "Descreva o que está visível nesta imagem em português. Ela mostra uma tela de computador, slide, busca do Google, site ou gráfico?"
+                "Describe this image in detail. Is it showing a computer screen, laptop screen, website, slide, graph, or text on screen?"
             )
-            desc_classify = self.query_ollama("moondream", prompt_classify, image_path=frame_path).lower()
+            desc_classify = self.query_ollama(self.vision_model, prompt_classify, image_path=frame_path).lower()
             
-            is_screen = any(kw in desc_classify for kw in ["tela", "slide", "gráfico", "grafico", "google", "busca", "texto", "sistema", "site", "computador", "navegador", "página", "pagina", "tabela", "código", "codigo", "menu"])
+            keywords = [
+                "screen", "display", "laptop", "computer", "website", "webpage", "slide",
+                "graph", "google", "search", "text", "page", "table", "code", "menu", "list",
+                "tela", "grafico", "busca", "sistema", "site", "navegador", "pagina"
+            ]
+            is_screen = any(kw in desc_classify for kw in keywords)
             if not is_screen:
                 console.print(f"  [yellow]🙈 Frame ignorado (sem tela ou gráfico de conteúdo): {frame_filename}[/yellow]")
                 continue
@@ -417,7 +525,18 @@ class KnowledgePipeline:
             send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via Qwen2.5:3b")
             seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
 
+            original_url = self.get_original_url(filename, basename)
+
+            saved_frames = [
+                {
+                    "filename": Path(fpath).name,
+                    "url": f"/api/media/frames/{basename}/{Path(fpath).name}"
+                }
+                for fpath in saved_frame_paths
+            ]
+
             document = {
+                "basename": basename,
                 "metadata": {
                     "source": "facebook_profile_seo",
                     "pipeline_version": "3.0.0 (Python Nativo)",
@@ -427,23 +546,77 @@ class KnowledgePipeline:
                     "filename": filename,
                     "type": filetype,
                     "extension": item["ext"],
+                    "url": original_url,
                     "path": str(filepath),
                     "duration_seconds": duration_seconds
+                },
+                "input_file": {
+                    "filename": filename,
+                    "type": filetype,
+                    "extension": item["ext"],
+                    "url": original_url,
+                    "media_url": f"/api/media/input/{filetype}s/{filename}" if filepath.exists() else None,
+                    "duration_seconds": duration_seconds,
+                    "size_bytes": filepath.stat().st_size if filepath.exists() else 0
                 },
                 "content": {
                     "transcription": transcription,
                     "visual_description": visual_summary,
                     "frame_descriptions": frame_descriptions if filetype == "video" else None,
-                    "saved_frame_files": saved_frame_paths
+                    "saved_frame_files": saved_frame_paths,
+                    "saved_frames": saved_frames
                 },
-                "seo_knowledge": seo_knowledge
+                "seo_knowledge": seo_knowledge,
+                "updated_at": datetime.now().isoformat()
             }
 
-            output_path = self.output_dir / f"{basename}.json"
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(document, f, ensure_ascii=False, indent=2)
+            db = self.get_mongo_db()
+            saved_to_db = False
+            if db is not None:
+                try:
+                    existing = db["seo_knowledge"].find_one({"basename": basename})
+                    if existing and "user_implementation" in existing:
+                        document["user_implementation"] = existing["user_implementation"]
+                    else:
+                        document["user_implementation"] = {
+                            "status": "pendente",
+                            "completed_steps": [],
+                            "comments": []
+                        }
 
-            console.print(f"[bold green]✅ Sucesso! Conhecimento salvo em: {output_path}[/bold green]")
+                    db["seo_knowledge"].update_one(
+                        {"basename": basename},
+                        {"$set": document},
+                        upsert=True
+                    )
+                    console.print(f"[bold green]✅ Sucesso! Conhecimento salvo diretamente no MongoDB (coleção: seo_knowledge)[/bold green]")
+                    saved_to_db = True
+                except Exception as mongo_err:
+                    console.print(f"[bold red]❌ Erro ao salvar no MongoDB: {mongo_err}[/bold red]")
+
+            if not saved_to_db:
+                output_path = self.output_dir / f"{basename}.json"
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(document, f, ensure_ascii=False, indent=2)
+                console.print(f"[bold yellow]⚠️ Salvo em backup JSON local: {output_path}[/bold yellow]")
+
+            # Deletar o arquivo de entrada original para liberar espaço em disco
+            try:
+                if filepath.exists():
+                    filepath.unlink()
+                    console.print(f"[green]🗑️  Arquivo de entrada removido para liberar espaço: {filename}[/green]")
+            except Exception as del_err:
+                console.print(f"[yellow]⚠️  Falha ao remover arquivo de entrada {filename}: {del_err}[/yellow]")
+
+            # Limpar arquivo de áudio temporário se existir
+            if filetype == "video":
+                audio_tmp = self.processing_audio_dir / f"{basename}.wav"
+                if audio_tmp.exists():
+                    try:
+                        audio_tmp.unlink()
+                    except Exception:
+                        pass
+
             send_telemetry_event(self.run_id, "FILE_COMPLETE", status="completed", filename=filename, message=f"Sucesso ao processar {filename}")
             return True
 
@@ -458,18 +631,69 @@ class KnowledgePipeline:
             )
             return False
 
+    def _save_pipeline_run(self, run_data: dict):
+        """Cria ou atualiza o documento da execução (run) na coleção pipeline_runs."""
+        db = self.get_mongo_db()
+        if db is None:
+            return
+        try:
+            db["pipeline_runs"].update_one(
+                {"run_id": run_data["run_id"]},
+                {"$set": run_data},
+                upsert=True
+            )
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Falha ao registrar pipeline_run no MongoDB: {e}[/yellow]")
+
     def run_once(self):
         pending = self.get_pending_files()
         send_telemetry_event(self.run_id, "PIPELINE_START", status="info", message=f"Pipeline iniciado com {len(pending)} arquivo(s) pendente(s)")
+
+        run_doc = {
+            "run_id": self.run_id,
+            "source": "pipeline",
+            "status": "in_progress",
+            "started_at": datetime.now().isoformat(),
+            "finished_at": None,
+            "total_files": len(pending),
+            "success_files": 0,
+            "error_files": 0,
+            "error_count": 0
+        }
+        self._save_pipeline_run(run_doc)
+
         if not pending:
             console.print("[dim]Nenhum arquivo pendente para processar.[/dim]")
+            run_doc.update({"status": "completed", "finished_at": datetime.now().isoformat()})
+            self._save_pipeline_run(run_doc)
             return 0
 
-        count = 0
+        success_count = 0
+        error_count = 0
         for item in pending:
             if self.process_item(item):
-                count += 1
-        return count
+                success_count += 1
+            else:
+                error_count += 1
+
+        final_status = "completed" if error_count == 0 else ("error" if success_count == 0 else "completed")
+        run_doc.update({
+            "status": final_status,
+            "finished_at": datetime.now().isoformat(),
+            "success_files": success_count,
+            "error_files": error_count,
+            "error_count": error_count
+        })
+        self._save_pipeline_run(run_doc)
+
+        event_status = "completed" if final_status == "completed" else "error"
+        send_telemetry_event(
+            self.run_id,
+            "PIPELINE_COMPLETE" if final_status == "completed" else "PIPELINE_ERROR",
+            status=event_status,
+            message=f"Pipeline finalizado. Éxito: {success_count}/{len(pending)} arquivos, Erros: {error_count}"
+        )
+        return success_count
 
     def run_watch(self, interval: int = 30):
         console.print(f"[bold blue]👀 Pipeline Python ativo em modo contínuo (intervalo: {interval}s)...[/bold blue]")

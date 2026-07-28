@@ -9,18 +9,25 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
 from pydantic import BaseModel
 
-from web.domain.entities import Comment, ExecutionEvent
+from web.domain.entities import Comment, ExecutionEvent, PipelineRun
+from web.application.config_use_cases import GetAllConfigsUseCase, GetConfigUseCase, UpdateConfigUseCase
 from web.application.sync_use_case import SyncKnowledgeUseCase
 from web.application.strategy_use_cases import (
     GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
 )
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
-    RecordExecutionEventUseCase, GetExecutionEventsUseCase, SaveTargetProfileUseCase, GetTargetProfilesUseCase
+    RecordExecutionEventUseCase, GetExecutionEventsUseCase,
+    SavePipelineRunUseCase, GetPipelineRunUseCase, ListPipelineRunsUseCase,
+    SaveTargetProfileUseCase, GetTargetProfilesUseCase
 )
 from web.infrastructure.media_service import MediaStreamingService
 
 router = APIRouter()
+
+
+class UpdateConfigRequest(BaseModel):
+    value: str
 
 
 class CommentRequest(BaseModel):
@@ -73,8 +80,14 @@ stop_process_use_case: StopProcessUseCase = None
 get_process_status_use_case: GetProcessStatusUseCase = None
 record_event_use_case: RecordExecutionEventUseCase = None
 get_events_use_case: GetExecutionEventsUseCase = None
+save_run_use_case: SavePipelineRunUseCase = None
+get_run_use_case: GetPipelineRunUseCase = None
+list_runs_use_case: ListPipelineRunsUseCase = None
 save_profile_use_case: SaveTargetProfileUseCase = None
 get_profiles_use_case: GetTargetProfilesUseCase = None
+get_all_configs_use_case: GetAllConfigsUseCase = None
+get_config_use_case: GetConfigUseCase = None
+update_config_use_case: UpdateConfigUseCase = None
 media_service: MediaStreamingService = None
 
 
@@ -83,14 +96,18 @@ def init_routes(
     _toggle_step_use_case, _update_status_use_case, _add_comment_use_case,
     _run_pipeline_use_case, _run_scraper_use_case, _stop_process_use_case, _get_process_status_use_case,
     _record_event_use_case, _get_events_use_case,
+    _save_run_use_case, _get_run_use_case, _list_runs_use_case,
     _save_profile_use_case, _get_profiles_use_case,
+    _get_all_configs_use_case, _get_config_use_case, _update_config_use_case,
     _media_service
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
     global toggle_step_use_case, update_status_use_case, add_comment_use_case
     global run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case
     global record_event_use_case, get_events_use_case
+    global save_run_use_case, get_run_use_case, list_runs_use_case
     global save_profile_use_case, get_profiles_use_case
+    global get_all_configs_use_case, get_config_use_case, update_config_use_case
     global media_service
 
     sync_use_case = _sync_use_case
@@ -105,9 +122,40 @@ def init_routes(
     get_process_status_use_case = _get_process_status_use_case
     record_event_use_case = _record_event_use_case
     get_events_use_case = _get_events_use_case
+    save_run_use_case = _save_run_use_case
+    get_run_use_case = _get_run_use_case
+    list_runs_use_case = _list_runs_use_case
     save_profile_use_case = _save_profile_use_case
     get_profiles_use_case = _get_profiles_use_case
+    get_all_configs_use_case = _get_all_configs_use_case
+    get_config_use_case = _get_config_use_case
+    update_config_use_case = _update_config_use_case
     media_service = _media_service
+
+
+@router.get("/api/configs")
+def get_configs(group: Optional[str] = Query(None)):
+    """Lista todos os parâmetros de configuração do sistema, opcionalmente filtrados por grupo."""
+    configs = get_all_configs_use_case.execute(group=group)
+    return {"count": len(configs), "configs": [c.model_dump() for c in configs]}
+
+
+@router.get("/api/configs/{key}")
+def get_config(key: str):
+    """Retorna um parâmetro de configuração pelo key."""
+    cfg = get_config_use_case.execute(key)
+    if not cfg:
+        raise HTTPException(status_code=404, detail=f"Configuração '{key}' não encontrada")
+    return cfg.model_dump()
+
+
+@router.patch("/api/configs/{key}")
+def update_config(key: str, payload: UpdateConfigRequest):
+    """Atualiza o valor de um parâmetro de configuração editável."""
+    updated = update_config_use_case.execute(key, payload.value.strip())
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Configuração '{key}' não encontrada ou não é editável")
+    return updated.model_dump()
 
 
 @router.get("/api/target-profiles")
@@ -144,12 +192,39 @@ def webhook_execution_event(payload: ExecutionEventRequest):
 
 @router.get("/api/execution-events")
 def get_execution_events(
+    run_id: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50)
 ):
-    events = get_events_use_case.execute(source=source, status=status, limit=limit)
+    events = get_events_use_case.execute(run_id=run_id, source=source, status=status, limit=limit)
     return {"count": len(events), "events": [e.model_dump() for e in events]}
+
+
+@router.get("/api/pipeline-runs")
+def list_pipeline_runs(
+    source: Optional[str] = Query(None),
+    limit: int = Query(20)
+):
+    """Lista todas as execuções (runs) do Pipeline e Scraper."""
+    runs = list_runs_use_case.execute(source=source, limit=limit)
+    return {"count": len(runs), "runs": [r.model_dump() for r in runs]}
+
+
+@router.get("/api/pipeline-runs/{run_id}")
+def get_pipeline_run(run_id: str):
+    """Retorna os detalhes de uma execução específica pelo run_id."""
+    run = get_run_use_case.execute(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} não encontrada")
+    return run.model_dump()
+
+
+@router.get("/api/pipeline-runs/{run_id}/events")
+def get_run_events(run_id: str, limit: int = Query(100)):
+    """Lista todos os execution_events de uma execução pelo run_id."""
+    events = get_events_use_case.execute(run_id=run_id, limit=limit)
+    return {"run_id": run_id, "count": len(events), "events": [e.model_dump() for e in events]}
 
 
 @router.post("/api/sync")

@@ -74,8 +74,21 @@ DEFAULT_OUTPUT_IMAGES = str(PROJECT_ROOT / "data" / "input" / "images")
 DEFAULT_OUTPUT_METADATA = str(PROJECT_ROOT / "data" / "input" / "metadata")
 DEFAULT_SESSION_DIR = str(PROJECT_ROOT / "data" / "scraper" / "session")
 DEFAULT_MAX_SCROLLS = 50
-SCROLL_PAUSE = 2.5  # segundos entre scrolls
+DEFAULT_SCROLL_PAUSE = 2.5  # segundos entre scrolls
+SCROLL_PAUSE = DEFAULT_SCROLL_PAUSE  # compat backward
 PAGE_LOAD_TIMEOUT = 30000  # ms
+
+
+def _get_mongo_config() -> dict:
+    """Lê app_config do MongoDB. Retorna dict vazio se não conseguir conectar."""
+    try:
+        from pymongo import MongoClient
+        mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=1500)
+        docs = list(client["pipelineface"]["app_config"].find({}, {"_id": 0, "key": 1, "value": 1}))
+        return {d["key"]: d["value"] for d in docs}
+    except Exception:
+        return {}
 
 
 
@@ -123,21 +136,28 @@ class FacebookScraper:
     def __init__(
         self,
         target_url: str,
-        session_dir: str = DEFAULT_SESSION_DIR,
+        session_dir: str = None,
         output_videos: str = DEFAULT_OUTPUT_VIDEOS,
         output_images: str = DEFAULT_OUTPUT_IMAGES,
         output_metadata: str = DEFAULT_OUTPUT_METADATA,
-        max_scrolls: int = DEFAULT_MAX_SCROLLS,
+        max_scrolls: int = None,
         only_videos: bool = False,
         only_images: bool = False,
         headless: bool = True,
     ):
+        # Carregar config do MongoDB com fallback para defaults
+        cfg = _get_mongo_config()
+        resolved_max_scrolls = max_scrolls if max_scrolls is not None else int(cfg.get("scraper_max_scrolls", DEFAULT_MAX_SCROLLS))
+        resolved_session_dir = session_dir or cfg.get("scraper_session_dir", DEFAULT_SESSION_DIR)
+        self.scroll_pause = float(cfg.get("scraper_scroll_pause", DEFAULT_SCROLL_PAUSE))
+        self.webhook_url = cfg.get("webhook_url", "http://localhost:8000/api/webhooks/execution-event")
+
         self.target_url = target_url.rstrip("/")
-        self.session_dir = Path(session_dir)
+        self.session_dir = Path(resolved_session_dir)
         self.output_videos = Path(output_videos)
         self.output_images = Path(output_images)
         self.output_metadata = Path(output_metadata)
-        self.max_scrolls = max_scrolls
+        self.max_scrolls = resolved_max_scrolls
         self.only_videos = only_videos
         self.only_images = only_images
         self.headless = headless
@@ -162,18 +182,31 @@ class FacebookScraper:
             from pymongo import MongoClient
             mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
             client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-            db = client["pipelineface"]
-            return db["download_history"]
+            return client["pipelineface"]
         except Exception:
             return None
+
+    def _save_pipeline_run(self, run_data: dict):
+        """Cria ou atualiza a execução na coleção pipeline_runs do MongoDB."""
+        db = self._init_mongo_client()
+        if db is None:
+            return
+        try:
+            db["pipeline_runs"].update_one(
+                {"run_id": run_data["run_id"]},
+                {"$set": run_data},
+                upsert=True
+            )
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Falha ao registrar pipeline_run do scraper no MongoDB: {e}[/yellow]")
 
     def _load_download_history(self) -> set:
         """Carrega o histórico de URLs e hashes já baixados do MongoDB."""
         history = set()
-        mongo_col = self._init_mongo_client()
-        if mongo_col is not None:
+        db = self._init_mongo_client()
+        if db is not None:
             try:
-                for doc in mongo_col.find({}, {"url": 1, "url_hash": 1}):
+                for doc in db["download_history"].find({}, {"url": 1, "url_hash": 1}):
                     if "url" in doc: history.add(doc["url"])
                     if "url_hash" in doc: history.add(doc["url_hash"])
                 if history:
@@ -204,10 +237,10 @@ class FacebookScraper:
         self.downloaded_history.add(url)
         self.downloaded_history.add(url_hash)
 
-        mongo_col = self._init_mongo_client()
-        if mongo_col is not None:
+        db = self._init_mongo_client()
+        if db is not None:
             try:
-                mongo_col.update_one(
+                db["download_history"].update_one(
                     {"url_hash": url_hash},
                     {"$set": {
                         "url": url,
@@ -1030,6 +1063,20 @@ Exemplos:
 
     send_telemetry_event(scraper.run_id, "SCRAPE_START", status="in_progress", target_url=args.target, message=f"Iniciando coleta para {args.target}")
 
+    run_doc = {
+        "run_id": scraper.run_id,
+        "source": "scraper",
+        "status": "in_progress",
+        "target_url": args.target,
+        "started_at": datetime.now().isoformat(),
+        "finished_at": None,
+        "total_files": 0,
+        "success_files": 0,
+        "error_files": 0,
+        "error_count": 0
+    }
+    scraper._save_pipeline_run(run_doc)
+
     try:
         # Coletar URLs
         send_telemetry_event(scraper.run_id, "COLLECT_MEDIA", status="in_progress", target_url=args.target, message=f"Coletando mídia em {args.target}")
@@ -1047,12 +1094,36 @@ Exemplos:
         # Salvar metadados e resumo
         scraper.save_metadata()
         scraper.print_summary()
+
+        v_down = sum(1 for v in scraper.collected_videos if v.get("downloaded"))
+        i_down = sum(1 for i in scraper.collected_images if i.get("downloaded"))
+        total_down = v_down + i_down
+        err_len = len(scraper.errors)
+
+        run_doc.update({
+            "status": "completed" if err_len == 0 else "completed",
+            "finished_at": datetime.now().isoformat(),
+            "total_files": len(scraper.collected_videos) + len(scraper.collected_images),
+            "success_files": total_down,
+            "error_files": err_len,
+            "error_count": err_len
+        })
+        scraper._save_pipeline_run(run_doc)
+
         send_telemetry_event(scraper.run_id, "SCRAPE_COMPLETE", status="completed", target_url=args.target, message=f"Coleta e download concluídos para {args.target}")
 
     except Exception as e:
         import traceback
         err_msg = str(e)
         err_trace = traceback.format_exc()
+
+        run_doc.update({
+            "status": "error",
+            "finished_at": datetime.now().isoformat(),
+            "error_count": run_doc.get("error_count", 0) + 1
+        })
+        scraper._save_pipeline_run(run_doc)
+
         send_telemetry_event(scraper.run_id, "ERROR", status="error", target_url=args.target, message=f"Falha na raspagem: {err_msg}", error_details=err_trace)
         raise e
 
