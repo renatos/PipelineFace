@@ -12,18 +12,24 @@ from fastapi.templating import Jinja2Templates
 
 # Imports das Camadas da Arquitetura Limpa
 from web.infrastructure.mongo_repository import (
-    MongoStrategyRepository, MongoExecutionEventRepository, MongoTargetProfileRepository
+    MongoAppConfigRepository, MongoStrategyRepository, MongoExecutionEventRepository,
+    MongoPipelineRunRepository, MongoTargetProfileRepository
 )
 from web.infrastructure.media_service import MediaStreamingService
 from web.infrastructure.process_runner import AsyncProcessRunner
 
+from web.application.config_use_cases import (
+    GetAllConfigsUseCase, GetConfigUseCase, UpdateConfigUseCase, GetConfigAsDictUseCase
+)
 from web.application.sync_use_case import SyncKnowledgeUseCase
 from web.application.strategy_use_cases import (
     GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
 )
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
-    RecordExecutionEventUseCase, GetExecutionEventsUseCase, SaveTargetProfileUseCase, GetTargetProfilesUseCase
+    RecordExecutionEventUseCase, GetExecutionEventsUseCase,
+    SavePipelineRunUseCase, GetPipelineRunUseCase, ListPipelineRunsUseCase,
+    SaveTargetProfileUseCase, GetTargetProfilesUseCase
 )
 from web.presentation.routes import router as api_router, init_routes
 
@@ -53,13 +59,19 @@ def create_app() -> FastAPI:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     # 1. Instanciação da Infraestrutura
+    config_repo = MongoAppConfigRepository(mongo_uri=MONGO_URI)  # seed automático
     mongo_repo = MongoStrategyRepository(mongo_uri=MONGO_URI)
     event_repo = MongoExecutionEventRepository(mongo_uri=MONGO_URI)
+    run_repo = MongoPipelineRunRepository(mongo_uri=MONGO_URI)
     profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
     media_service = MediaStreamingService(INPUT_VIDEOS_DIR, INPUT_IMAGES_DIR, OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
     # 2. Instanciação dos Casos de Uso (Aplicação)
+    get_all_configs_use_case = GetAllConfigsUseCase(config_repo)
+    get_config_use_case = GetConfigUseCase(config_repo)
+    update_config_use_case = UpdateConfigUseCase(config_repo)
+
     sync_use_case = SyncKnowledgeUseCase(
         repository=mongo_repo,
         output_dir=OUTPUT_DIR,
@@ -75,6 +87,10 @@ def create_app() -> FastAPI:
 
     record_event_use_case = RecordExecutionEventUseCase(event_repo)
     get_events_use_case = GetExecutionEventsUseCase(event_repo)
+
+    save_run_use_case = SavePipelineRunUseCase(run_repo)
+    get_run_use_case = GetPipelineRunUseCase(run_repo)
+    list_runs_use_case = ListPipelineRunsUseCase(run_repo)
 
     save_profile_use_case = SaveTargetProfileUseCase(profile_repo)
     get_profiles_use_case = GetTargetProfilesUseCase(profile_repo)
@@ -96,7 +112,9 @@ def create_app() -> FastAPI:
         toggle_step_use_case, update_status_use_case, add_comment_use_case,
         run_pipeline_use_case, run_scraper_use_case, stop_process_use_case, get_process_status_use_case,
         record_event_use_case, get_events_use_case,
+        save_run_use_case, get_run_use_case, list_runs_use_case,
         save_profile_use_case, get_profiles_use_case,
+        get_all_configs_use_case, get_config_use_case, update_config_use_case,
         media_service
     )
 
