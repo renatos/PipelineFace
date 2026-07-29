@@ -166,16 +166,17 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <button onclick="startListPostsUI()" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+          <button onclick="openScraperModalWithMode('list_posts')" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
             <i data-lucide="search" class="w-3.5 h-3.5"></i>
             <span>🔍 Listar Novos Posts (Step 1)</span>
           </button>
 
-          <button onclick="openDownloadBatchModal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+          <button onclick="openScraperModalWithMode('download_pending')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
             <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
             <span>⬇️ Baixar Pendentes em Lote (Step 2)</span>
           </button>
         </div>
+
       </div>
 
       <!-- KPI Mini Counters de Posts -->
@@ -433,10 +434,10 @@
     </div>
   </div>
 
-  <!-- Modal Scraper -->
+  <!-- Modal Scraper (Única Fonte da Verdade) -->
   <div id="modal-scraper" onclick="if(event.target === this) closeModal('modal-scraper')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
           <i data-lucide="bot" class="w-5 h-5 text-emerald-400"></i> Executar Facebook Scraper
         </h3>
@@ -444,6 +445,18 @@
       </div>
 
       <div class="space-y-3">
+        <!-- Modo de Operação -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-3.5 h-3.5 text-purple-400"></i> Modo de Operação / Etapa
+          </label>
+          <select id="scraper-action-mode" onchange="onScraperModeChange()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-blue-500">
+            <option value="list_posts">🔍 Step 1: Listar/Catalogar Posts no MongoDB (Sem Download)</option>
+            <option value="download_pending">⬇️ Step 2: Baixar Posts Pendentes em Lote</option>
+            <option value="full_scrape">🚀 Coleta & Download Completo (Fluxo Direto)</option>
+          </select>
+        </div>
+
         <!-- Perfis Recentes no MongoDB -->
         <div>
           <label class="block text-xs font-medium text-slate-400 mb-1.5 flex items-center justify-between">
@@ -461,13 +474,22 @@
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
         </div>
 
-        <div>
+        <!-- Campo Dinâmico: Scrolls (Step 1 ou Full) -->
+        <div id="field-max-scrolls">
           <label class="block text-xs font-medium text-slate-400 mb-1">Limite de Scrolls (Máx)</label>
           <input type="number" id="scraper-max-scrolls" value="50" min="1" max="500"
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
         </div>
 
-        <div class="flex gap-4 text-xs text-slate-300 pt-1">
+        <!-- Campo Dinâmico: Batch Size (Step 2) -->
+        <div id="field-batch-size" class="hidden">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Quantidade por Lote (batch size)</label>
+          <input type="number" id="scraper-batch-size" value="10" min="1" max="100"
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+          <p class="text-[10px] text-slate-500 mt-1">Recomendado: 10 a 20 posts pendentes por execução.</p>
+        </div>
+
+        <div id="field-media-filters" class="flex gap-4 text-xs text-slate-300 pt-1">
           <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" id="scraper-only-videos" class="rounded bg-slate-950 border-slate-800 text-blue-600">
             Apenas Vídeos
@@ -481,7 +503,7 @@
 
       <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
         <button onclick="closeModal('modal-scraper')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:bg-slate-800">Fechar</button>
-        <button onclick="startScraper()" class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20">Iniciar Coleta</button>
+        <button onclick="startScraperAction()" id="btn-scraper-submit" class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20">Executar Ação</button>
       </div>
     </div>
   </div>
@@ -504,40 +526,6 @@
       
       <div id="logs-terminal" class="bg-slate-950 p-4 rounded-xl font-mono text-xs text-emerald-400 h-80 overflow-y-auto border border-slate-800 space-y-1">
         <p class="text-slate-500">[Nenhum log ativo no momento]</p>
-      </div>
-
-  <!-- Modal Download em Lote (Step 2) -->
-  <div id="modal-download-batch" onclick="if(event.target === this) closeModal('modal-download-batch')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="download-cloud" class="w-5 h-5 text-emerald-400"></i> Download de Pendentes (Step 2)
-        </h3>
-        <button onclick="closeModal('modal-download-batch')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-
-      <div class="space-y-3 text-xs">
-        <p class="text-slate-300 leading-relaxed">
-          Selecione a quantidade de posts pendentes a baixar neste lote. O download é processado em segundo plano e você pode acompanhar o progresso via terminal de logs.
-        </p>
-
-        <div>
-          <label class="block font-medium text-slate-400 mb-1">URL do Perfil Alvo</label>
-          <input type="text" id="batch-target-url" placeholder="https://www.facebook.com/perfil.alvo"
-                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500">
-        </div>
-
-        <div>
-          <label class="block font-medium text-slate-400 mb-1">Quantidade por Lote (batch size)</label>
-          <input type="number" id="batch-size-input" value="10" min="1" max="100"
-                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500">
-          <p class="text-[11px] text-slate-500 mt-1">Recomendado: 10 a 20 posts por lote para evitar bloqueios.</p>
-        </div>
-      </div>
-
-      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
-        <button onclick="closeModal('modal-download-batch')" class="px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:bg-slate-800">Cancelar</button>
-        <button onclick="startDownloadPendingUI()" class="px-4 py-1.5 rounded-lg font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20">Iniciar Lote</button>
       </div>
     </div>
   </div>
@@ -651,32 +639,7 @@
       } catch (e) { alert(e); }
     }
 
-    function openDownloadBatchModal() {
-      const currentUrl = document.getElementById('scraper-url')?.value || '';
-      document.getElementById('batch-target-url').value = currentUrl;
-      document.getElementById('modal-download-batch').classList.remove('hidden');
-    }
 
-    async function startDownloadPendingUI() {
-      const targetUrl = document.getElementById('batch-target-url').value.trim();
-      const batchSize = parseInt(document.getElementById('batch-size-input').value, 10) || 10;
-      if (!targetUrl) return alert('Digite a URL do perfil alvo.');
-      try {
-        const res = await fetch('/api/actions/download-pending', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_url: targetUrl, batch_size: batchSize })
-        });
-        if (res.ok) {
-          closeModal('modal-download-batch');
-          openLogsModal();
-          checkProcessStatus();
-        } else {
-          const d = await res.json();
-          alert(d.detail || 'Erro ao iniciar download em lote.');
-        }
-      } catch (e) { alert(e); }
-    }
 
 
     async function loadStrategies() {
@@ -1050,21 +1013,73 @@
       } catch (err) { alert(err); }
     }
 
-    async function startScraper() {
+    function openScraperModalWithMode(mode = 'list_posts') {
+      loadRecentProfiles();
+      const modeSelect = document.getElementById('scraper-action-mode');
+      if (modeSelect) modeSelect.value = mode;
+      onScraperModeChange();
+      document.getElementById('modal-scraper').classList.remove('hidden');
+    }
+
+    function onScraperModeChange() {
+      const mode = document.getElementById('scraper-action-mode').value;
+      const fieldScrolls = document.getElementById('field-max-scrolls');
+      const fieldBatch = document.getElementById('field-batch-size');
+      const fieldFilters = document.getElementById('field-media-filters');
+      const btnSubmit = document.getElementById('btn-scraper-submit');
+
+      if (mode === 'list_posts') {
+        fieldScrolls.classList.remove('hidden');
+        fieldBatch.classList.add('hidden');
+        fieldFilters.classList.add('hidden');
+        btnSubmit.innerText = '🔍 Iniciar Listagem de Posts';
+      } else if (mode === 'download_pending') {
+        fieldScrolls.classList.add('hidden');
+        fieldBatch.classList.remove('hidden');
+        fieldFilters.classList.add('hidden');
+        btnSubmit.innerText = '⬇️ Iniciar Download em Lote';
+      } else {
+        fieldScrolls.classList.remove('hidden');
+        fieldBatch.classList.add('hidden');
+        fieldFilters.classList.remove('hidden');
+        btnSubmit.innerText = '🚀 Iniciar Coleta & Download Completo';
+      }
+    }
+
+    async function startScraperAction() {
+      const mode = document.getElementById('scraper-action-mode').value;
       const url = document.getElementById('scraper-url').value.trim();
       const maxScrolls = parseInt(document.getElementById('scraper-max-scrolls').value, 10) || 50;
+      const batchSize = parseInt(document.getElementById('scraper-batch-size').value, 10) || 10;
+
       if (!url) return alert('Digite a URL do perfil alvo');
+
       try {
-        const res = await fetch('/api/run-scraper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        let endpoint = '';
+        let bodyPayload = {};
+
+        if (mode === 'list_posts') {
+          endpoint = '/api/actions/list-posts';
+          bodyPayload = { target_url: url, max_scrolls: maxScrolls };
+        } else if (mode === 'download_pending') {
+          endpoint = '/api/actions/download-pending';
+          bodyPayload = { target_url: url, batch_size: batchSize };
+        } else {
+          endpoint = '/api/run-scraper';
+          bodyPayload = {
             target_url: url,
             max_scrolls: maxScrolls,
             only_videos: document.getElementById('scraper-only-videos').checked,
             only_images: document.getElementById('scraper-only-images').checked
-          })
+          };
+        }
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyPayload)
         });
+
         if (res.ok) {
           closeModal('modal-scraper');
           openLogsModal();
@@ -1075,11 +1090,17 @@
             closeModal('modal-scraper');
             openLogsModal();
           } else {
-            alert(d.detail || 'Erro ao iniciar o scraper.');
+            alert(d.detail || 'Erro ao executar ação.');
           }
         }
       } catch (err) { alert('Erro na comunicação com o servidor: ' + err); }
     }
+
+    // Alias para o botão no Header
+    function openScraperModal() {
+      openScraperModalWithMode('full_scrape');
+    }
+
 
     async function stopProcess() {
       if (!confirm('Deseja realmente interromper a execução do processo atual?')) return;
