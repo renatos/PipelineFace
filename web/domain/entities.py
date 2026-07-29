@@ -111,3 +111,30 @@ class TargetProfile(BaseModel):
     last_max_scrolls: Optional[int] = 50
     last_videos_count: Optional[int] = 0
     last_images_count: Optional[int] = 0
+
+
+class PostMediaItem(BaseModel):
+    """Mídia individual dentro de um post. O media_id permite referência cruzada."""
+    media_id: str
+    url: str
+    type: str  # "video" | "image"
+    filename: Optional[str] = None
+    downloaded: bool = False
+    download_error: Optional[str] = None
+
+
+class ProfilePost(BaseModel):
+    """Post catalogado de um perfil-alvo do Facebook."""
+    post_id: str
+    profile_url: str
+    profile_name: Optional[str] = None
+    post_url: str
+    post_type: str  # "video" | "image" | "album" | "text" | "reel"
+    status: str = "pending"  # "pending" | "downloading" | "downloaded" | "processed" | "error"
+    media_items: List[PostMediaItem] = Field(default_factory=list)
+    post_text_preview: Optional[str] = None
+    scroll_position: Optional[int] = None
+    discovered_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    error_message: Optional[str] = None
+

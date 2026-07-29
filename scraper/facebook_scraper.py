@@ -231,7 +231,7 @@ class FacebookScraper:
         }
         self.history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _mark_as_downloaded(self, url: str, filename: str = None, media_type: str = None):
+    def _mark_as_downloaded(self, url: str, filename: str = None, media_type: str = None, post_id: str = None, media_id: str = None):
         """Marca uma URL/Mídia como baixada no MongoDB e no histórico local."""
         url_hash = self._url_hash(url)
         self.downloaded_history.add(url)
@@ -240,15 +240,21 @@ class FacebookScraper:
         db = self._init_mongo_client()
         if db is not None:
             try:
+                update_data = {
+                    "url": url,
+                    "url_hash": url_hash,
+                    "filename": filename,
+                    "media_type": media_type,
+                    "downloaded_at": datetime.now().isoformat()
+                }
+                if post_id:
+                    update_data["post_id"] = post_id
+                if media_id:
+                    update_data["media_id"] = media_id
+
                 db["download_history"].update_one(
                     {"url_hash": url_hash},
-                    {"$set": {
-                        "url": url,
-                        "url_hash": url_hash,
-                        "filename": filename,
-                        "media_type": media_type,
-                        "downloaded_at": datetime.now().isoformat()
-                    }},
+                    {"$set": update_data},
                     upsert=True
                 )
             except Exception:
@@ -263,6 +269,27 @@ class FacebookScraper:
         if url in self.downloaded_history or self._url_hash(url) in self.downloaded_history:
             return True
         return False
+
+    def _extract_post_id(self, url: str) -> str:
+        """Extrai um identificador único de post a partir da URL do Facebook."""
+        if not url:
+            return None
+        patterns = [
+            r'/posts/(pfbid\w+)',
+            r'/posts/(\d+)',
+            r'/videos/(\d+)',
+            r'/reel/(\d+)',
+            r'/photo/?\?fbid=(\d+)',
+            r'/photos/[^/]+/(\d+)',
+            r'fbid=(\d+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        # Fallback hash
+        return hashlib.md5(url.encode()).hexdigest()[:16]
+
 
     def _url_hash(self, url: str) -> str:
         """Gera hash único de identificação da URL."""
@@ -683,6 +710,335 @@ class FacebookScraper:
                 pass
 
     # --------------------------------------------------------
+    # Step 1: Listagem e Catalogação de Posts no MongoDB
+    # --------------------------------------------------------
+
+    def list_posts(self):
+        """Navega pelo perfil-alvo, cataloga todos os posts na coleção profile_posts do MongoDB e gera eventos de telemetria."""
+        if not self._has_session():
+            console.print("[bold red]❌ Nenhuma sessão encontrada. Execute com --login primeiro.[/bold red]")
+            sys.exit(1)
+
+        console.print(f"\n[bold blue]📋 Catalogando posts de:[/bold blue] {self.target_url}")
+        send_telemetry_event(self.run_id, "LIST_POSTS_START", status="in_progress", target_url=self.target_url, message=f"Iniciando catalogação de posts em {self.target_url}")
+
+        db = self._init_mongo_client()
+        cataloged_count = 0
+        new_posts_count = 0
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=self.headless,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            context = browser.new_context(
+                storage_state=str(self._session_path()),
+                viewport={"width": 1366, "height": 768},
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                locale="pt-BR",
+                timezone_id="America/Sao_Paulo",
+            )
+            page = context.new_page()
+
+            try:
+                page.goto(self.target_url, timeout=PAGE_LOAD_TIMEOUT)
+                time.sleep(3)
+                self._dismiss_popups(page)
+                self.profile_info = self._extract_profile_info(page)
+
+                profile_name = self.profile_info.get("name", "Perfil")
+                console.print(f"[green]✅ Perfil carregado:[/green] {profile_name}")
+
+                seen_post_ids = set()
+                last_height = 0
+                no_change_count = 0
+
+                console.print(f"\n[bold]📜 Iniciando scroll para catalogar posts (máx {self.max_scrolls} iterações)...[/bold]\n")
+
+                for scroll_num in range(1, self.max_scrolls + 1):
+                    page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
+                    time.sleep(self.scroll_pause)
+
+                    # Extrair elementos de mídia e links de post da página
+                    page_videos = self._extract_video_urls(page)
+                    page_images = self._extract_image_urls(page)
+
+                    # Agrupar mídias por post (usando URL do link ou hash da mídia)
+                    raw_items = []
+                    for v in page_videos:
+                        url = v.get("url", "")
+                        if url:
+                            raw_items.append({"url": url, "type": "video"})
+                    for img in page_images:
+                        url = img.get("url", "")
+                        if url:
+                            raw_items.append({"url": url, "type": "image"})
+
+                    for item in raw_items:
+                        item_url = item["url"]
+                        post_id = self._extract_post_id(item_url)
+                        if not post_id or post_id in seen_post_ids:
+                            continue
+
+                        seen_post_ids.add(post_id)
+
+                        # Gerar media_id único
+                        media_id = f"m_{post_id[:16]}_0"
+                        media_item = {
+                            "media_id": media_id,
+                            "url": item_url,
+                            "type": item["type"],
+                            "filename": None,
+                            "downloaded": False,
+                            "download_error": None
+                        }
+
+                        post_type = item["type"]
+                        post_doc = {
+                            "post_id": post_id,
+                            "profile_url": self.target_url,
+                            "profile_name": profile_name,
+                            "post_url": item_url if ("facebook.com" in item_url and ("/posts/" in item_url or "/videos/" in item_url or "/reel/" in item_url)) else f"{self.target_url}/posts/{post_id}",
+                            "post_type": post_type,
+                            "status": "pending",
+                            "media_items": [media_item],
+                            "post_text_preview": item_url[:100],
+                            "scroll_position": scroll_num,
+                            "discovered_at": datetime.now().isoformat(),
+                            "updated_at": datetime.now().isoformat(),
+                            "error_message": None
+                        }
+
+                        if db is not None:
+                            try:
+                                res = db["profile_posts"].update_one(
+                                    {"post_id": post_id},
+                                    {
+                                        "$set": {
+                                            "profile_url": self.target_url,
+                                            "profile_name": profile_name,
+                                            "post_url": post_doc["post_url"],
+                                            "post_type": post_type,
+                                            "media_items": post_doc["media_items"],
+                                            "scroll_position": scroll_num,
+                                            "updated_at": datetime.now().isoformat()
+                                        },
+                                        "$setOnInsert": {
+                                            "status": "pending",
+                                            "discovered_at": datetime.now().isoformat(),
+                                            "error_message": None
+                                        }
+                                    },
+                                    upsert=True
+                                )
+                                if res.upserted_id:
+                                    new_posts_count += 1
+                                cataloged_count += 1
+                            except Exception as mongo_err:
+                                console.print(f"[yellow]⚠️ Erro ao salvar post no MongoDB: {mongo_err}[/yellow]")
+
+                        send_telemetry_event(
+                            self.run_id, "POST_DISCOVERED", status="info", target_url=self.target_url,
+                            message=f"Post descoberto: {post_id}",
+                            metrics={"post_id": post_id, "post_type": post_type, "scroll": scroll_num}
+                        )
+
+                    # Checar fim do conteúdo
+                    new_height = page.evaluate("document.documentElement.scrollHeight")
+                    if new_height == last_height:
+                        no_change_count += 1
+                        if no_change_count >= 5:
+                            break
+                    else:
+                        no_change_count = 0
+                    last_height = new_height
+
+                    if scroll_num % 10 == 0:
+                        self._dismiss_popups(page)
+
+                context.storage_state(path=str(self._session_path()))
+
+            except Exception as e:
+                console.print(f"[bold red]❌ Erro durante listagem de posts: {e}[/bold red]")
+                send_telemetry_event(self.run_id, "LIST_POSTS_ERROR", status="error", target_url=self.target_url, message=f"Erro na listagem: {e}")
+                self.errors.append(str(e))
+            finally:
+                browser.close()
+
+        console.print(f"\n[bold green]✅ Catalogação concluída! Total catalogados: {cataloged_count} ({new_posts_count} novos)[/bold green]")
+        send_telemetry_event(
+            self.run_id, "LIST_POSTS_COMPLETE", status="completed", target_url=self.target_url,
+            message=f"Listagem concluída. {new_posts_count} novos posts catalogados.",
+            metrics={"new_posts_count": new_posts_count, "cataloged_count": cataloged_count}
+        )
+
+    # --------------------------------------------------------
+    # Step 2: Download em Lotes de Posts Pendentes
+    # --------------------------------------------------------
+
+    def download_pending(self, batch_size: int = 10):
+        """Busca até N posts pendentes na coleção profile_posts e realiza o download das mídias em lote."""
+        db = self._init_mongo_client()
+        if db is None:
+            console.print("[bold red]❌ Conexão com MongoDB necessária para download de pendentes.[/bold red]")
+            return
+
+        pending_docs = list(db["profile_posts"].find(
+            {"profile_url": self.target_url, "status": "pending"},
+            {"_id": 0}
+        ).sort("discovered_at", 1).limit(batch_size))
+
+        if not pending_docs:
+            # Fallback: buscar qualquer pending sem filtro de profile_url exato
+            pending_docs = list(db["profile_posts"].find(
+                {"status": "pending"},
+                {"_id": 0}
+            ).sort("discovered_at", 1).limit(batch_size))
+
+        if not pending_docs:
+            console.print("[yellow]⚠️ Nenhum post pendente encontrado para download.[/yellow]")
+            return
+
+        total_pending = db["profile_posts"].count_documents({"status": "pending"})
+        console.print(f"\n[bold blue]⬇️ Iniciando download em lote: {len(pending_docs)} posts (total pendentes no banco: {total_pending})[/bold blue]")
+
+        send_telemetry_event(
+            self.run_id, "DOWNLOAD_BATCH_START", status="in_progress", target_url=self.target_url,
+            message=f"Iniciando lote de download ({len(pending_docs)} posts)",
+            metrics={"batch_size": len(pending_docs), "total_pending": total_pending}
+        )
+
+        cookies_path = self.session_dir / "cookies.txt"
+        self._export_cookies_for_ytdlp(cookies_path)
+
+        success_count = 0
+        error_count = 0
+
+        for i, post in enumerate(pending_docs, 1):
+            post_id = post["post_id"]
+            media_items = post.get("media_items", [])
+            console.print(f"\n[{i}/{len(pending_docs)}] 📦 Baixando post {post_id} ({len(media_items)} mídia(s))...")
+
+            # Atualizar status para downloading
+            db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloading", "updated_at": datetime.now().isoformat()}})
+            send_telemetry_event(self.run_id, "POST_DOWNLOAD_START", status="in_progress", message=f"Baixando post {post_id}", metrics={"post_id": post_id})
+
+            post_success = True
+            downloaded_files = []
+
+            for media in media_items:
+                media_id = media.get("media_id", f"m_{post_id[:16]}_0")
+                url = media.get("url", "")
+                media_type = media.get("type", "image")
+
+                if not url:
+                    continue
+
+                if self._is_already_downloaded(url):
+                    console.print(f"  [yellow]⏭️ Mídia já baixada (histórico): {media_id}[/yellow]")
+                    db["profile_posts"].update_one(
+                        {"post_id": post_id, "media_items.media_id": media_id},
+                        {"$set": {"media_items.$.downloaded": True, "updated_at": datetime.now().isoformat()}}
+                    )
+                    continue
+
+                if media_type == "video":
+                    if "facebook.com" in url and ("/videos/" in url or "/watch/" in url or "/reel/" in url):
+                        try:
+                            res = subprocess.run(
+                                [
+                                    "yt-dlp",
+                                    "--cookies", str(cookies_path),
+                                    "--output", str(self.output_videos / "%(title).80s_%(id)s.%(ext)s"),
+                                    "--format", "best[ext=mp4]/best",
+                                    "--no-overwrites",
+                                    "--socket-timeout", "30",
+                                    "--retries", "3",
+                                    url,
+                                ],
+                                capture_output=True, text=True, timeout=300
+                            )
+                            if res.returncode == 0:
+                                filename = f"fb_{self._url_hash(url)}.mp4"
+                                self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
+                                downloaded_files.append(filename)
+                                db["profile_posts"].update_one(
+                                    {"post_id": post_id, "media_items.media_id": media_id},
+                                    {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                                )
+                                console.print(f"  [green]✅ Vídeo baixado com sucesso via yt-dlp[/green]")
+                            else:
+                                post_success = False
+                                db["profile_posts"].update_one(
+                                    {"post_id": post_id, "media_items.media_id": media_id},
+                                    {"$set": {"media_items.$.download_error": res.stderr[:150], "updated_at": datetime.now().isoformat()}}
+                                )
+                        except Exception as ex:
+                            post_success = False
+                            console.print(f"  [red]❌ Erro ao baixar vídeo: {ex}[/red]")
+                    else:
+                        try:
+                            import requests
+                            filename = self._url_to_filename(url, "mp4")
+                            filepath = self.output_videos / filename
+                            resp = requests.get(url, timeout=120, stream=True)
+                            if resp.status_code == 200:
+                                with open(filepath, "wb") as f:
+                                    for chunk in resp.iter_content(chunk_size=8192): f.write(chunk)
+                                self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
+                                downloaded_files.append(filename)
+                                db["profile_posts"].update_one(
+                                    {"post_id": post_id, "media_items.media_id": media_id},
+                                    {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                                )
+                                console.print(f"  [green]✅ Vídeo direto baixado com sucesso[/green]")
+                            else:
+                                post_success = False
+                        except Exception as ex:
+                            post_success = False
+                            console.print(f"  [red]❌ Erro HTTP vídeo: {ex}[/red]")
+                else:
+                    # Imagem
+                    try:
+                        import requests
+                        filename = self._url_to_filename(url, "jpg")
+                        filepath = self.output_images / filename
+                        resp = requests.get(url, timeout=60, stream=True)
+                        if resp.status_code == 200:
+                            with open(filepath, "wb") as f:
+                                for chunk in resp.iter_content(chunk_size=8192): f.write(chunk)
+                            self._mark_as_downloaded(url, filename=filename, media_type="image", post_id=post_id, media_id=media_id)
+                            downloaded_files.append(filename)
+                            db["profile_posts"].update_one(
+                                {"post_id": post_id, "media_items.media_id": media_id},
+                                {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                            )
+                            console.print(f"  [green]✅ Imagem baixada com sucesso[/green]")
+                        else:
+                            post_success = False
+                    except Exception as ex:
+                        post_success = False
+                        console.print(f"  [red]❌ Erro ao baixar imagem: {ex}[/red]")
+
+            if post_success:
+                success_count += 1
+                db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloaded", "updated_at": datetime.now().isoformat()}})
+                send_telemetry_event(self.run_id, "POST_DOWNLOAD_COMPLETE", status="completed", message=f"Sucesso no download do post {post_id}", metrics={"post_id": post_id, "files": downloaded_files})
+            else:
+                error_count += 1
+                db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "error", "error_message": "Falha no download de mídias", "updated_at": datetime.now().isoformat()}})
+                send_telemetry_event(self.run_id, "POST_DOWNLOAD_ERROR", status="error", message=f"Falha no download do post {post_id}", metrics={"post_id": post_id})
+
+        remaining_pending = db["profile_posts"].count_documents({"status": "pending"})
+        console.print(f"\n[bold green]✅ Lote finalizado! Sucessos: {success_count}, Erros: {error_count}. Restantes pendentes no banco: {remaining_pending}[/bold green]")
+        send_telemetry_event(
+            self.run_id, "DOWNLOAD_BATCH_COMPLETE", status="completed", target_url=self.target_url,
+            message=f"Lote de download finalizado. Sucessos: {success_count}, Erros: {error_count}, Restantes: {remaining_pending}",
+            metrics={"processed_in_batch": len(pending_docs), "success_count": success_count, "error_count": error_count, "remaining_pending": remaining_pending}
+        )
+
+
+    # --------------------------------------------------------
     # Download
     # --------------------------------------------------------
 
@@ -1017,6 +1373,22 @@ Exemplos:
         help="Diretório para sessão salva",
     )
     parser.add_argument(
+        "--list-posts",
+        action="store_true",
+        help="Step 1: Apenas catalogar posts do perfil-alvo no MongoDB, sem realizar download",
+    )
+    parser.add_argument(
+        "--download-pending",
+        action="store_true",
+        help="Step 2: Baixar mídias dos posts com status 'pending' em lote",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=int(os.environ.get("SCRAPER_DOWNLOAD_BATCH_SIZE", 10)),
+        help="Quantidade máxima de posts pendentes a baixar no Step 2 (padrão: 10)",
+    )
+    parser.add_argument(
         "--output-videos",
         type=str,
         default=DEFAULT_OUTPUT_VIDEOS,
@@ -1061,6 +1433,17 @@ Exemplos:
         console.print("\n[red]❌ É necessário especificar --target com a URL do perfil.[/red]")
         sys.exit(1)
 
+    # Modo Step 1: Apenas Listar Posts
+    if args.list_posts:
+        scraper.list_posts()
+        return
+
+    # Modo Step 2: Download em Lote de Posts Pendentes
+    if args.download_pending:
+        scraper.download_pending(batch_size=args.batch_size)
+        return
+
+    # Modo legado / direto: Coleta e Download na mesma sessão
     send_telemetry_event(scraper.run_id, "SCRAPE_START", status="in_progress", target_url=args.target, message=f"Iniciando coleta para {args.target}")
 
     run_doc = {
@@ -1130,3 +1513,4 @@ Exemplos:
 
 if __name__ == "__main__":
     main()
+

@@ -6,7 +6,7 @@ Contrato abstrato de persistência para as estratégias, eventos e histórico de
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
-from web.domain.entities import AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile
+from web.domain.entities import AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile, ProfilePost
 
 
 class AbstractAppConfigRepository(ABC):
@@ -104,3 +104,41 @@ class AbstractTargetProfileRepository(ABC):
     def list_profiles(self, limit: int = 20) -> List[TargetProfile]:
         """Lista os perfis alvo gravados no MongoDB ordenados pela data de raspagem."""
         pass
+
+
+class AbstractProfilePostRepository(ABC):
+    @abstractmethod
+    def upsert_post(self, post: ProfilePost) -> bool:
+        """Insere ou atualiza um post. Retorna True se inseriu novo documento."""
+        pass
+
+    @abstractmethod
+    def find_by_post_id(self, post_id: str) -> Optional[ProfilePost]:
+        """Busca um post pelo ID único."""
+        pass
+
+    @abstractmethod
+    def list_posts(self, profile_url: Optional[str] = None, status: Optional[str] = None, limit: int = 500) -> List[ProfilePost]:
+        """Lista os posts catalogados com filtros opcionais."""
+        pass
+
+    @abstractmethod
+    def get_pending_posts(self, profile_url: Optional[str] = None, limit: int = 10) -> List[ProfilePost]:
+        """Retorna até N posts pendentes de download."""
+        pass
+
+    @abstractmethod
+    def update_status(self, post_id: str, status: str, error_message: Optional[str] = None) -> bool:
+        """Atualiza o status de processamento do post."""
+        pass
+
+    @abstractmethod
+    def update_media_status(self, post_id: str, media_id: str, downloaded: bool, filename: Optional[str] = None, error: Optional[str] = None) -> bool:
+        """Atualiza o status de uma mídia específica dentro do post."""
+        pass
+
+    @abstractmethod
+    def get_stats(self, profile_url: Optional[str] = None) -> Dict[str, int]:
+        """Retorna estatísticas dos posts (total, pending, downloading, downloaded, processed, error)."""
+        pass
+

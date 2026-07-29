@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 # Imports das Camadas da Arquitetura Limpa
 from web.infrastructure.mongo_repository import (
     MongoAppConfigRepository, MongoStrategyRepository, MongoExecutionEventRepository,
-    MongoPipelineRunRepository, MongoTargetProfileRepository
+    MongoPipelineRunRepository, MongoTargetProfileRepository, MongoProfilePostRepository
 )
 from web.infrastructure.media_service import MediaStreamingService
 from web.infrastructure.process_runner import AsyncProcessRunner
@@ -30,6 +30,9 @@ from web.application.process_use_case import (
     RecordExecutionEventUseCase, GetExecutionEventsUseCase,
     SavePipelineRunUseCase, GetPipelineRunUseCase, ListPipelineRunsUseCase,
     SaveTargetProfileUseCase, GetTargetProfilesUseCase
+)
+from web.application.post_use_cases import (
+    ListProfilePostsUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase, RunListPostsUseCase, RunDownloadPendingUseCase
 )
 from web.presentation.routes import router as api_router, init_routes
 
@@ -64,6 +67,7 @@ def create_app() -> FastAPI:
     event_repo = MongoExecutionEventRepository(mongo_uri=MONGO_URI)
     run_repo = MongoPipelineRunRepository(mongo_uri=MONGO_URI)
     profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
+    post_repo = MongoProfilePostRepository(mongo_uri=MONGO_URI)
     media_service = MediaStreamingService(INPUT_VIDEOS_DIR, INPUT_IMAGES_DIR, OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
@@ -95,6 +99,10 @@ def create_app() -> FastAPI:
     save_profile_use_case = SaveTargetProfileUseCase(profile_repo)
     get_profiles_use_case = GetTargetProfilesUseCase(profile_repo)
 
+    list_posts_use_case = ListProfilePostsUseCase(post_repo)
+    get_post_stats_use_case = GetPostStatsUseCase(post_repo)
+    update_post_status_use_case = UpdatePostStatusUseCase(post_repo)
+
     def on_process_complete():
         sync_use_case.execute()
 
@@ -103,6 +111,8 @@ def create_app() -> FastAPI:
 
     run_pipeline_use_case = RunPipelineUseCase(run_proc)
     run_scraper_use_case = RunScraperUseCase(run_proc)
+    run_list_posts_use_case = RunListPostsUseCase(run_proc, config_repo)
+    run_download_pending_use_case = RunDownloadPendingUseCase(run_proc, config_repo)
     stop_process_use_case = StopProcessUseCase(process_runner.terminate_process)
     get_process_status_use_case = GetProcessStatusUseCase(process_runner.get_status)
 
@@ -115,6 +125,8 @@ def create_app() -> FastAPI:
         save_run_use_case, get_run_use_case, list_runs_use_case,
         save_profile_use_case, get_profiles_use_case,
         get_all_configs_use_case, get_config_use_case, update_config_use_case,
+        list_posts_use_case, get_post_stats_use_case, update_post_status_use_case,
+        run_list_posts_use_case, run_download_pending_use_case,
         media_service
     )
 
@@ -134,3 +146,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

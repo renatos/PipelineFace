@@ -86,6 +86,12 @@
           <span>Scraper</span>
         </button>
 
+        <button onclick="togglePostsSection()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
+          <i data-lucide="list" class="w-4 h-4 text-purple-400"></i>
+          <span>Posts Catalogados</span>
+        </button>
+
+
         <button onclick="openLogsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition" title="Ver Logs em Tempo Real">
           <i data-lucide="terminal" class="w-4 h-4"></i>
         </button>
@@ -132,16 +138,98 @@
         </div>
       </div>
 
-      <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex items-center justify-between shadow-sm backdrop-blur">
-        <div>
-          <p class="text-xs font-medium text-slate-400">Concluídos</p>
-          <h3 id="stat-concluidos" class="text-2xl font-bold text-emerald-400 mt-1">0</h3>
+    <!-- SEÇÃO DE POSTS CATALOGADOS (COLLAPSIBLE / PAINEL) -->
+    <div id="section-posts-catalog" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              📋 Posts Catalogados no Banco (MongoDB)
+            </h3>
+            <p class="text-xs text-slate-400">Step 1 (Listagem) e Step 2 (Download em Lote)</p>
+          </div>
         </div>
-        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="startListPostsUI()" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+            <i data-lucide="search" class="w-3.5 h-3.5"></i>
+            <span>🔍 Listar Novos Posts (Step 1)</span>
+          </button>
+
+          <button onclick="openDownloadBatchModal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+            <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
+            <span>⬇️ Baixar Pendentes em Lote (Step 2)</span>
+          </button>
         </div>
       </div>
+
+      <!-- KPI Mini Counters de Posts -->
+      <div class="grid grid-cols-2 sm:grid-cols-6 gap-2.5 text-center text-xs">
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+          <span class="text-slate-400 block text-[11px]">Total Posts</span>
+          <span id="post-stat-total" class="font-bold text-white text-sm">0</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-amber-500/20">
+          <span class="text-amber-400 block text-[11px]">Pendentes</span>
+          <span id="post-stat-pending" class="font-bold text-amber-400 text-sm">0</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-blue-500/20">
+          <span class="text-blue-400 block text-[11px]">Baixando</span>
+          <span id="post-stat-downloading" class="font-bold text-blue-400 text-sm">0</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-emerald-500/20">
+          <span class="text-emerald-400 block text-[11px]">Baixados</span>
+          <span id="post-stat-downloaded" class="font-bold text-emerald-400 text-sm">0</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-purple-500/20">
+          <span class="text-purple-400 block text-[11px]">Processados</span>
+          <span id="post-stat-processed" class="font-bold text-purple-400 text-sm">0</span>
+        </div>
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-rose-500/20">
+          <span class="text-rose-400 block text-[11px]">Erros</span>
+          <span id="post-stat-error" class="font-bold text-rose-400 text-sm">0</span>
+        </div>
+      </div>
+
+      <!-- Filtro por Status + Tabela de Posts -->
+      <div class="flex items-center justify-between text-xs pt-1">
+        <div class="flex gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 font-medium">
+          <button onclick="filterPostStatus('')" id="btn-post-status-all" class="px-2.5 py-1 rounded-md text-white bg-slate-800">Todos</button>
+          <button onclick="filterPostStatus('pending')" id="btn-post-status-pending" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white">Pendentes</button>
+          <button onclick="filterPostStatus('downloaded')" id="btn-post-status-downloaded" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white">Baixados</button>
+          <button onclick="filterPostStatus('error')" id="btn-post-status-error" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white">Erros</button>
+        </div>
+
+        <button onclick="loadProfilePosts()" class="text-slate-400 hover:text-white text-xs flex items-center gap-1">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Atualizar
+        </button>
+      </div>
+
+      <!-- Tabela de Posts -->
+      <div class="overflow-x-auto max-h-60 rounded-xl border border-slate-800">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800 sticky top-0">
+            <tr>
+              <th class="p-2.5">Post ID</th>
+              <th class="p-2.5">Tipo</th>
+              <th class="p-2.5">Preview / URL</th>
+              <th class="p-2.5">Mídias</th>
+              <th class="p-2.5">Status</th>
+              <th class="p-2.5">Descoberto em</th>
+            </tr>
+          </thead>
+          <tbody id="table-posts-body" class="divide-y divide-slate-800/60 bg-slate-950/40">
+            <tr>
+              <td colspan="6" class="p-4 text-center text-slate-500 italic">Carregando posts catalogados...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
+
 
     <!-- Barra de Filtros & Busca -->
     <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -406,10 +494,38 @@
         <p class="text-slate-500">[Nenhum log ativo no momento]</p>
       </div>
 
-      <div class="flex justify-end pt-2 border-t border-slate-800">
-        <button onclick="closeModal('modal-logs')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition">
-          Fechar
-        </button>
+  <!-- Modal Download em Lote (Step 2) -->
+  <div id="modal-download-batch" onclick="if(event.target === this) closeModal('modal-download-batch')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="download-cloud" class="w-5 h-5 text-emerald-400"></i> Download de Pendentes (Step 2)
+        </h3>
+        <button onclick="closeModal('modal-download-batch')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-300 leading-relaxed">
+          Selecione a quantidade de posts pendentes a baixar neste lote. O download é processado em segundo plano e você pode acompanhar o progresso via terminal de logs.
+        </p>
+
+        <div>
+          <label class="block font-medium text-slate-400 mb-1">URL do Perfil Alvo</label>
+          <input type="text" id="batch-target-url" placeholder="https://www.facebook.com/perfil.alvo"
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-400 mb-1">Quantidade por Lote (batch size)</label>
+          <input type="number" id="batch-size-input" value="10" min="1" max="100"
+                 class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500">
+          <p class="text-[11px] text-slate-500 mt-1">Recomendado: 10 a 20 posts por lote para evitar bloqueios.</p>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-download-batch')" class="px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:bg-slate-800">Cancelar</button>
+        <button onclick="startDownloadPendingUI()" class="px-4 py-1.5 rounded-lg font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20">Iniciar Lote</button>
       </div>
     </div>
   </div>
@@ -417,6 +533,7 @@
   <!-- SCRIPTS -->
   <script>
     let currentFilterStatus = '';
+    let currentPostFilterStatus = '';
     let currentSearchTimeout = null;
     let activeBasename = null;
     let currentEventSource = '';
@@ -425,14 +542,130 @@
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       loadStrategies();
+      loadProfilePosts();
+      loadPostStats();
       setInterval(checkProcessStatus, 2500);
 
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' || e.key === 'Esc') {
-          ['modal-detail', 'modal-events', 'modal-error-detail', 'modal-scraper', 'modal-logs'].forEach(id => closeModal(id));
+          ['modal-detail', 'modal-events', 'modal-error-detail', 'modal-scraper', 'modal-logs', 'modal-download-batch'].forEach(id => closeModal(id));
         }
       });
     });
+
+    // ---- POSTS CATALOGADOS (STEP 1 E STEP 2) ----
+    function togglePostsSection() {
+      const sec = document.getElementById('section-posts-catalog');
+      sec.classList.toggle('hidden');
+    }
+
+    async function loadPostStats() {
+      try {
+        const res = await fetch('/api/profile-posts/stats');
+        const stats = await res.json();
+        document.getElementById('post-stat-total').innerText = stats.total || 0;
+        document.getElementById('post-stat-pending').innerText = stats.pending || 0;
+        document.getElementById('post-stat-downloading').innerText = stats.downloading || 0;
+        document.getElementById('post-stat-downloaded').innerText = stats.downloaded || 0;
+        document.getElementById('post-stat-processed').innerText = stats.processed || 0;
+        document.getElementById('post-stat-error').innerText = stats.error || 0;
+      } catch (e) {}
+    }
+
+    async function loadProfilePosts() {
+      let url = '/api/profile-posts?limit=100&';
+      if (currentPostFilterStatus) url += `status=${currentPostFilterStatus}&`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const tbody = document.getElementById('table-posts-body');
+        tbody.innerHTML = '';
+
+        const posts = data.posts || [];
+        if (posts.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">Nenhum post catalogado encontrado.</td></tr>`;
+          return;
+        }
+
+        posts.forEach(p => {
+          const dateStr = p.discovered_at ? new Date(p.discovered_at).toLocaleString('pt-BR') : 'N/A';
+          let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">⏳ Pendente</span>`;
+          if (p.status === 'downloading') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse">🔵 Baixando</span>`;
+          else if (p.status === 'downloaded') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✅ Baixado</span>`;
+          else if (p.status === 'error') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">❌ Erro</span>`;
+
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-900/60 transition';
+          tr.innerHTML = `
+            <td class="p-2.5 font-mono text-slate-300 font-bold">${p.post_id}</td>
+            <td class="p-2.5 capitalize font-medium text-slate-400">${p.post_type === 'video' ? '📹 Vídeo' : '🖼️ Imagem'}</td>
+            <td class="p-2.5 max-w-xs truncate text-slate-300" title="${p.post_url}">${p.post_text_preview || p.post_url}</td>
+            <td class="p-2.5 font-semibold text-slate-400">${(p.media_items || []).length} mídia(s)</td>
+            <td class="p-2.5">${statusBadge}</td>
+            <td class="p-2.5 text-slate-500 whitespace-nowrap">${dateStr}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+        loadPostStats();
+      } catch (e) {}
+    }
+
+    function filterPostStatus(status) {
+      currentPostFilterStatus = status;
+      ['all', 'pending', 'downloaded', 'error'].forEach(s => {
+        const btn = document.getElementById(`btn-post-status-${s}`);
+        if (btn) btn.className = (s === 'all' && !status) || s === status ? 'px-2.5 py-1 rounded-md text-white bg-slate-800' : 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white';
+      });
+      loadProfilePosts();
+    }
+
+    async function startListPostsUI() {
+      const url = prompt('Digite a URL do perfil alvo para catalogar posts (Step 1):', document.getElementById('scraper-url')?.value || 'https://www.facebook.com/perfil');
+      if (!url) return;
+      try {
+        const res = await fetch('/api/actions/list-posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_url: url })
+        });
+        if (res.ok) {
+          openLogsModal();
+          checkProcessStatus();
+        } else {
+          const d = await res.json();
+          alert(d.detail || 'Erro ao iniciar listagem.');
+        }
+      } catch (e) { alert(e); }
+    }
+
+    function openDownloadBatchModal() {
+      const currentUrl = document.getElementById('scraper-url')?.value || '';
+      document.getElementById('batch-target-url').value = currentUrl;
+      document.getElementById('modal-download-batch').classList.remove('hidden');
+    }
+
+    async function startDownloadPendingUI() {
+      const targetUrl = document.getElementById('batch-target-url').value.trim();
+      const batchSize = parseInt(document.getElementById('batch-size-input').value, 10) || 10;
+      if (!targetUrl) return alert('Digite a URL do perfil alvo.');
+      try {
+        const res = await fetch('/api/actions/download-pending', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_url: targetUrl, batch_size: batchSize })
+        });
+        if (res.ok) {
+          closeModal('modal-download-batch');
+          openLogsModal();
+          checkProcessStatus();
+        } else {
+          const d = await res.json();
+          alert(d.detail || 'Erro ao iniciar download em lote.');
+        }
+      } catch (e) { alert(e); }
+    }
+
 
     async function loadStrategies() {
       const search = document.getElementById('input-search').value.trim();

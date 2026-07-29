@@ -5,7 +5,8 @@
 # Wrapper para executar o scraper dentro do container.
 # Uso:
 #   ./scripts/scrape.sh --login
-#   ./scripts/scrape.sh --target https://facebook.com/perfil
+#   ./scripts/scrape.sh --target https://facebook.com/perfil --list-posts
+#   ./scripts/scrape.sh --target https://facebook.com/perfil --download-pending --batch-size 10
 #   ./scripts/scrape.sh --target https://facebook.com/perfil --only-videos
 # ============================================================
 
