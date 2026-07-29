@@ -13,7 +13,7 @@ services:
       - WHISPER_URL=http://localhost:9000/asr
       - OLLAMA_URL=http://localhost:11434/api/chat
     volumes:
-      - ./data:/app/data
+      - .:/app
 
   mongodb:
     image: mongo:7.0
@@ -23,6 +23,25 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+
+  whisper:
+    image: docker.io/onerahmet/openai-whisper-asr-webservice:latest
+    container_name: pipelineface_whisper
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=base
+
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Containerfile
+    container_name: pipelineface_scraper
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - .:/app
 
 volumes:
   mongo-data:
