@@ -474,8 +474,13 @@
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
         </div>
 
-        <!-- Campo Dinâmico: Scrolls (Step 1 ou Full) -->
-        <div id="field-max-scrolls">
+        <!-- Mensagem Informativa do Step 1 -->
+        <div id="info-step-1" class="hidden p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-300 text-[11px] leading-relaxed">
+          <span class="font-semibold">ℹ️ Step 1 (Listar/Catalogar):</span> O navegador irá percorrer o perfil-alvo para identificar e salvar todos os posts no MongoDB com status <span class="font-semibold text-amber-400">pendente</span>, sem realizar o download de mídias neste momento.
+        </div>
+
+        <!-- Campo Dinâmico: Scrolls (Apenas em Coleta Completa) -->
+        <div id="field-max-scrolls" class="hidden">
           <label class="block text-xs font-medium text-slate-400 mb-1">Limite de Scrolls (Máx)</label>
           <input type="number" id="scraper-max-scrolls" value="50" min="1" max="500"
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
@@ -488,6 +493,7 @@
                  class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
           <p class="text-[10px] text-slate-500 mt-1">Recomendado: 10 a 20 posts pendentes por execução.</p>
         </div>
+
 
         <div id="field-media-filters" class="flex gap-4 text-xs text-slate-300 pt-1">
           <label class="flex items-center gap-1.5 cursor-pointer">
@@ -1023,28 +1029,33 @@
 
     function onScraperModeChange() {
       const mode = document.getElementById('scraper-action-mode').value;
+      const infoStep1 = document.getElementById('info-step-1');
       const fieldScrolls = document.getElementById('field-max-scrolls');
       const fieldBatch = document.getElementById('field-batch-size');
       const fieldFilters = document.getElementById('field-media-filters');
       const btnSubmit = document.getElementById('btn-scraper-submit');
 
       if (mode === 'list_posts') {
-        fieldScrolls.classList.remove('hidden');
+        if (infoStep1) infoStep1.classList.remove('hidden');
+        fieldScrolls.classList.add('hidden');
         fieldBatch.classList.add('hidden');
         fieldFilters.classList.add('hidden');
         btnSubmit.innerText = '🔍 Iniciar Listagem de Posts';
       } else if (mode === 'download_pending') {
+        if (infoStep1) infoStep1.classList.add('hidden');
         fieldScrolls.classList.add('hidden');
         fieldBatch.classList.remove('hidden');
         fieldFilters.classList.add('hidden');
         btnSubmit.innerText = '⬇️ Iniciar Download em Lote';
       } else {
+        if (infoStep1) infoStep1.classList.add('hidden');
         fieldScrolls.classList.remove('hidden');
         fieldBatch.classList.add('hidden');
         fieldFilters.classList.remove('hidden');
         btnSubmit.innerText = '🚀 Iniciar Coleta & Download Completo';
       }
     }
+
 
     async function startScraperAction() {
       const mode = document.getElementById('scraper-action-mode').value;
