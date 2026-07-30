@@ -256,9 +256,10 @@ class KnowledgePipeline:
             console.print(f"[yellow]⚠️  Falha ao extrair áudio: {e}[/yellow]")
             audio_path = None
 
+        fps_param = f"fps={self.fps_extraction},scale=720:-1" if hasattr(self, 'fps_extraction') and self.fps_extraction != "1/10" else "fps=1/5,scale=720:-1"
         cmd_frames = [
             "ffmpeg", "-y", "-i", str(video_path),
-            "-vf", "fps=1/10,scale=720:-1", "-q:v", "3",
+            "-vf", fps_param, "-q:v", "3",
             str(video_frames_dir / "frame_%04d.jpg")
         ]
         try:
@@ -434,14 +435,15 @@ class KnowledgePipeline:
 
             # 2. Checagem semântica Moondream (garante que contém tela/slide/sistema/texto)
             prompt_classify = (
-                "Describe this image in detail. Is it showing a computer screen, laptop screen, website, slide, graph, or text on screen?"
+                "Describe this image in detail. Is it showing a computer screen, laptop screen, monitor, smartphone screen, website, slide, graph, or text on screen?"
             )
             desc_classify = self.query_ollama(self.vision_model, prompt_classify, image_path=frame_path).lower()
             
             keywords = [
                 "screen", "display", "laptop", "computer", "website", "webpage", "slide",
                 "graph", "google", "search", "text", "page", "table", "code", "menu", "list",
-                "tela", "grafico", "busca", "sistema", "site", "navegador", "pagina"
+                "monitor", "phone", "mobile", "hand", "finger", "pointing", "device",
+                "tela", "grafico", "busca", "sistema", "site", "navegador", "pagina", "mao", "dedo"
             ]
             is_screen = any(kw in desc_classify for kw in keywords)
             if not is_screen:
