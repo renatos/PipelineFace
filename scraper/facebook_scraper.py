@@ -270,25 +270,45 @@ class FacebookScraper:
             return True
         return False
 
-    def _extract_post_id(self, url: str) -> str:
+    def _extract_post_id(self, url: str) -> Optional[str]:
         """Extrai um identificador único de post a partir da URL do Facebook."""
         if not url:
             return None
+
+        # Rejeitar links genéricos de navegação do Facebook (abas/menus/bens do sistema)
+        url_lower = url.lower()
+        ignored_substrings = [
+            "/reel/?", "/reel/tab", "/watch/", "/stories/", "/gaming/",
+            "/marketplace/", "/groups/", "/friends/", "/bookmarks/",
+            "/messages/", "/notifications", "/home.php", "/login"
+        ]
+        for ign in ignored_substrings:
+            if ign in url_lower and not re.search(r'/reel/\w{8,}', url):
+                return None
+
         patterns = [
             r'/posts/(pfbid\w+)',
             r'/posts/(\d+)',
             r'/videos/(\d+)',
-            r'/reel/(\d+)',
+            r'/reel/(\w+)',
             r'/photo/?\?fbid=(\d+)',
             r'/photos/[^/]+/(\d+)',
+            r'story_fbid=(\d+)',
             r'fbid=(\d+)',
         ]
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
-                return match.group(1)
-        # Fallback hash
-        return hashlib.md5(url.encode()).hexdigest()[:16]
+                extracted_id = match.group(1)
+                if extracted_id not in ["tab", "index", "feed", "watch"]:
+                    return extracted_id
+
+        # Se for uma URL direta de imagem CDN ou mídia sem id explicito no FB
+        if "scontent" in url or "fbcdn" in url:
+            return hashlib.md5(url.encode()).hexdigest()[:16]
+
+        return None
+
 
 
     def _url_hash(self, url: str) -> str:
@@ -482,11 +502,16 @@ class FacebookScraper:
                 }
             });
 
-            // Buscar links para vídeos do Facebook
+            // Buscar links para vídeos/reels específicos do Facebook (exclui abas genéricas)
             const links = document.querySelectorAll('a[href*="/videos/"], a[href*="/watch/"], a[href*="/reel/"]');
             links.forEach(link => {
                 const href = link.href;
-                if (href && !results.some(r => r.url === href)) {
+                if (!href) return;
+                
+                // Descartar links genéricos de abas do menu
+                if (href.includes('/reel/?') || href.endsWith('/reel/') || href.endsWith('/watch/') || href.includes('/reel/tab')) return;
+
+                if (!results.some(r => r.url === href)) {
                     results.push({
                         url: href,
                         type: 'video_link',
@@ -498,6 +523,7 @@ class FacebookScraper:
             return results;
         }""")
         return videos
+
 
     def _extract_image_urls(self, page) -> list[dict]:
         """Extrai URLs de imagens da página atual."""
