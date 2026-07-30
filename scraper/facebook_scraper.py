@@ -36,7 +36,9 @@ import sys
 import time
 import hashlib
 import uuid
+from typing import Optional, List, Dict
 from datetime import datetime
+
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
 
@@ -485,12 +487,14 @@ class FacebookScraper:
     # --------------------------------------------------------
 
     def _extract_video_urls(self, page) -> list[dict]:
-        """Extrai URLs de vídeos da página atual."""
+
+        """Extrai URLs de vídeos da página atual estritamente do feed do perfil."""
         videos = page.evaluate("""() => {
             const results = [];
+            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
             
             // Buscar elementos de vídeo
-            const videoElements = document.querySelectorAll('video');
+            const videoElements = mainContainer.querySelectorAll('video');
             videoElements.forEach(video => {
                 const src = video.src || video.querySelector('source')?.src;
                 if (src && !src.startsWith('blob:')) {
@@ -502,14 +506,14 @@ class FacebookScraper:
                 }
             });
 
-            // Buscar links para vídeos/reels específicos do Facebook (exclui abas genéricas)
-            const links = document.querySelectorAll('a[href*="/videos/"], a[href*="/watch/"], a[href*="/reel/"]');
+            // Buscar links para vídeos/reels específicos do Facebook no feed
+            const links = mainContainer.querySelectorAll('a[href*="/videos/"], a[href*="/watch/"], a[href*="/reel/"]');
             links.forEach(link => {
                 const href = link.href;
                 if (!href) return;
                 
-                // Descartar links genéricos de abas do menu
-                if (href.includes('/reel/?') || href.endsWith('/reel/') || href.endsWith('/watch/') || href.includes('/reel/tab')) return;
+                // Descartar links genéricos e notificações
+                if (href.includes('/reel/?') || href.endsWith('/reel/') || href.endsWith('/watch/') || href.includes('notif')) return;
 
                 if (!results.some(r => r.url === href)) {
                     results.push({
@@ -524,41 +528,38 @@ class FacebookScraper:
         }""")
         return videos
 
-
     def _extract_image_urls(self, page) -> list[dict]:
-        """Extrai URLs de imagens da página atual."""
+        """Extrai URLs de imagens da página atual estritamente do feed do perfil."""
         images = page.evaluate("""() => {
             const results = [];
             const seen = new Set();
+            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
 
-            // Buscar imagens em posts (exclui ícones, avatares pequenos)
-            const imgElements = document.querySelectorAll('img');
+            // Buscar imagens em posts no feed
+            const imgElements = mainContainer.querySelectorAll('img');
             imgElements.forEach(img => {
                 const src = img.src;
                 if (!src || seen.has(src)) return;
 
-                // Filtrar imagens muito pequenas (ícones, emojis)
-                const width = img.naturalWidth || img.width || 0;
-                const height = img.naturalHeight || img.height || 0;
-                if (width < 200 && height < 200) return;
-
-                // Filtrar imagens de perfil/sistema do Facebook
+                // Filtrar imagens de perfil/sistema/emojis do Facebook
                 if (src.includes('emoji') || src.includes('rsrc.php')) return;
 
                 seen.add(src);
                 results.push({
                     url: src,
                     alt: img.alt || null,
-                    width: width,
-                    height: height
+                    width: img.naturalWidth || img.width || 0,
+                    height: img.naturalHeight || img.height || 0
                 });
             });
 
-            // Buscar links para fotos de alta resolução
-            const photoLinks = document.querySelectorAll('a[href*="/photo"], a[href*="fbid="]');
+            // Buscar links para fotos no feed
+            const photoLinks = mainContainer.querySelectorAll('a[href*="/photo"], a[href*="fbid="]');
             photoLinks.forEach(link => {
                 const href = link.href;
-                if (href && !seen.has(href)) {
+                if (!href || href.includes('notif')) return;
+
+                if (!seen.has(href)) {
                     seen.add(href);
                     results.push({
                         url: href,
@@ -572,24 +573,70 @@ class FacebookScraper:
         }""")
         return images
 
+    def _extract_post_links(self, page) -> list[dict]:
+        """Extrai todas as URLs de posts/mídias diretamente do feed principal ([role=main])."""
+        links = page.evaluate("""() => {
+            const results = [];
+            const seen = new Set();
+            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
+            
+            const anchors = mainContainer.querySelectorAll('a[href*="/posts/"], a[href*="/videos/"], a[href*="/reel/"], a[href*="fbid="], a[href*="story_fbid="], a[href*="/photo"]');
+            anchors.forEach(a => {
+                const href = a.href;
+                if (!href || seen.has(href)) return;
+                
+                // Descartar links de notificações, menus laterais e comentários de terceiros
+                if (href.includes('notif') || href.includes('/reel/?') || href.includes('ref=bookmarks')) return;
+
+                seen.add(href);
+                const text = a.textContent ? a.textContent.trim().substring(0, 150) : "";
+                results.push({ url: href, text: text });
+            });
+            
+            return results;
+        }""")
+        return links
+
+    def _clean_facebook_url(self, url: str) -> str:
+        """Limpa parâmetros de rastreamento (notif, comment_id, __cft__, __tn__) mantendo a URL direta do post/reel/foto."""
+        if not url:
+            return url
+        try:
+            parsed = urlparse(url)
+            if "/reel/" in parsed.path or "/posts/" in parsed.path or "/videos/" in parsed.path:
+                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+        except Exception:
+            pass
+        return url
+
     def _extract_profile_info(self, page) -> dict:
-        """Extrai informações básicas do perfil."""
+        """Extrai informações básicas do perfil a partir do container principal."""
         info = page.evaluate("""() => {
             const result = {};
+            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document;
 
-            // Nome do perfil (h1 geralmente contém o nome)
-            const h1 = document.querySelector('h1');
-            if (h1) result.name = h1.textContent.trim();
+            const h1s = mainContainer.querySelectorAll('h1');
+            for (const h1 of h1s) {
+                const txt = h1.textContent.trim();
+                if (txt && txt !== "Notificações" && txt !== "Facebook" && txt !== "Menu" && txt !== "Feed") {
+                    result.name = txt;
+                    break;
+                }
+            }
 
-            // URL atual
             result.url = window.location.href;
-
-            // Título da página
             result.page_title = document.title;
-
             return result;
         }""")
+
+        # Fallback de nome de perfil baseado no slug da URL
+        if not info.get("name") or info.get("name") in ["Notificações", "Facebook", "Menu", "Feed"]:
+            slug = self.target_url.rstrip("/").split("/")[-1]
+            info["name"] = slug.replace(".", " ").title()
+
         return info
+
+
 
     # --------------------------------------------------------
     # Scroll e Coleta
@@ -772,8 +819,13 @@ class FacebookScraper:
                 self._dismiss_popups(page)
                 self.profile_info = self._extract_profile_info(page)
 
-                profile_name = self.profile_info.get("name", "Perfil")
+                profile_name = self.profile_info.get("name")
+                if not profile_name or profile_name in ["Notificações", "Facebook", "Menu", "Feed"]:
+                    slug = self.target_url.rstrip("/").split("/")[-1]
+                    profile_name = slug.replace(".", " ").title()
+
                 console.print(f"[green]✅ Perfil carregado:[/green] {profile_name}")
+
 
                 seen_post_ids = set()
                 last_height = 0
@@ -792,20 +844,26 @@ class FacebookScraper:
                     # Extrair elementos de mídia e links de post da página
                     page_videos = self._extract_video_urls(page)
                     page_images = self._extract_image_urls(page)
+                    page_post_links = self._extract_post_links(page)
 
                     # Agrupar mídias por post (usando URL do link ou hash da mídia)
                     raw_items = []
+                    for pl in page_post_links:
+                        url = pl.get("url", "")
+                        if url:
+                            raw_items.append({"url": url, "type": "post", "text": pl.get("text")})
                     for v in page_videos:
                         url = v.get("url", "")
                         if url:
-                            raw_items.append({"url": url, "type": "video"})
+                            raw_items.append({"url": url, "type": "video", "text": v.get("text")})
                     for img in page_images:
                         url = img.get("url", "")
                         if url:
-                            raw_items.append({"url": url, "type": "image"})
+                            raw_items.append({"url": url, "type": "image", "text": img.get("alt")})
+
 
                     for item in raw_items:
-                        item_url = item["url"]
+                        item_url = self._clean_facebook_url(item["url"])
                         post_id = self._extract_post_id(item_url)
                         if not post_id or post_id in seen_post_ids:
                             continue
@@ -822,6 +880,7 @@ class FacebookScraper:
                             "downloaded": False,
                             "download_error": None
                         }
+
 
                         post_type = item["type"]
                         post_doc = {
