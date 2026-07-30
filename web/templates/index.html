@@ -818,16 +818,26 @@
     }
 
     async function downloadSinglePostAction(postId) {
-      const targetId = postId || activePostId;
-      if (!targetId) return;
+      const rawTargetId = postId || activePostId;
+      if (!rawTargetId) return;
+      const targetId = encodeURIComponent(rawTargetId);
+
       try {
         const res = await fetch(`/api/profile-posts/${targetId}/download`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-          alert(data.message || 'Download iniciado!');
           closeModal('modal-post-detail');
+          loadProfilePosts();
+          loadPostStats();
           openLogsModal();
           checkProcessStatus();
+          // Iniciar auto-refresh frequente da tabela durante o download
+          if (!window.postDownloadPollInterval) {
+            window.postDownloadPollInterval = setInterval(() => {
+              loadProfilePosts();
+              loadPostStats();
+            }, 3000);
+          }
         } else {
           alert(data.detail || 'Erro ao iniciar download.');
         }
