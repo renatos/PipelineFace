@@ -265,11 +265,9 @@ class FacebookScraper:
         self._save_download_history()
 
     def _is_already_downloaded(self, url: str, target_filepath: Path = None) -> bool:
-        """Verifica se a URL ou arquivo já foi baixado anteriormente."""
-        if target_filepath and target_filepath.exists() and target_filepath.stat().st_size > 0:
-            return True
-        if url in self.downloaded_history or self._url_hash(url) in self.downloaded_history:
-            return True
+        """Verifica se a URL ou arquivo já foi baixado e EXISTE no disco."""
+        if target_filepath:
+            return target_filepath.exists() and target_filepath.stat().st_size > 0
         return False
 
     def _extract_post_and_media_ids(self, url: str) -> tuple[Optional[str], Optional[str]]:
@@ -1092,8 +1090,12 @@ class FacebookScraper:
                 if not url:
                     continue
 
-                if self._is_already_downloaded(url):
-                    console.print(f"  [yellow]⏭️ Mídia já baixada (histórico): {media_id}[/yellow]")
+                expected_filename = media.get("filename") or self._url_to_filename(url, "mp4" if media_type == "video" else "jpg")
+                target_dir = self.output_videos if media_type == "video" else self.output_images
+                target_file = target_dir / expected_filename if expected_filename else None
+
+                if self._is_already_downloaded(url, target_filepath=target_file):
+                    console.print(f"  [yellow]⏭️ Mídia já baixada (arquivo existe em disco): {media_id}[/yellow]")
                     db["profile_posts"].update_one(
                         {"post_id": post_id, "media_items.media_id": media_id},
                         {"$set": {"media_items.$.downloaded": True, "updated_at": datetime.now().isoformat()}}
