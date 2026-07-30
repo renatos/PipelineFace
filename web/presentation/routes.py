@@ -24,8 +24,10 @@ from web.application.process_use_case import (
 from web.infrastructure.media_service import MediaStreamingService
 
 from web.application.post_use_cases import (
-    ListProfilePostsUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase, RunListPostsUseCase, RunDownloadPendingUseCase
+    ListProfilePostsUseCase, GetSinglePostUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase,
+    RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
 )
+
 
 router = APIRouter()
 
@@ -103,10 +105,12 @@ get_all_configs_use_case: GetAllConfigsUseCase = None
 get_config_use_case: GetConfigUseCase = None
 update_config_use_case: UpdateConfigUseCase = None
 list_posts_use_case: ListProfilePostsUseCase = None
+get_single_post_use_case: GetSinglePostUseCase = None
 get_post_stats_use_case: GetPostStatsUseCase = None
 update_post_status_use_case: UpdatePostStatusUseCase = None
 run_list_posts_use_case: RunListPostsUseCase = None
 run_download_pending_use_case: RunDownloadPendingUseCase = None
+run_download_single_post_use_case: RunDownloadSinglePostUseCase = None
 media_service: MediaStreamingService = None
 
 
@@ -118,8 +122,8 @@ def init_routes(
     _save_run_use_case, _get_run_use_case, _list_runs_use_case,
     _save_profile_use_case, _get_profiles_use_case,
     _get_all_configs_use_case, _get_config_use_case, _update_config_use_case,
-    _list_posts_use_case, _get_post_stats_use_case, _update_post_status_use_case,
-    _run_list_posts_use_case, _run_download_pending_use_case,
+    _list_posts_use_case, _get_single_post_use_case, _get_post_stats_use_case, _update_post_status_use_case,
+    _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
     _media_service
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
@@ -129,8 +133,8 @@ def init_routes(
     global save_run_use_case, get_run_use_case, list_runs_use_case
     global save_profile_use_case, get_profiles_use_case
     global get_all_configs_use_case, get_config_use_case, update_config_use_case
-    global list_posts_use_case, get_post_stats_use_case, update_post_status_use_case
-    global run_list_posts_use_case, run_download_pending_use_case
+    global list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case
+    global run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case
     global media_service
 
     sync_use_case = _sync_use_case
@@ -154,11 +158,14 @@ def init_routes(
     get_config_use_case = _get_config_use_case
     update_config_use_case = _update_config_use_case
     list_posts_use_case = _list_posts_use_case
+    get_single_post_use_case = _get_single_post_use_case
     get_post_stats_use_case = _get_post_stats_use_case
     update_post_status_use_case = _update_post_status_use_case
     run_list_posts_use_case = _run_list_posts_use_case
     run_download_pending_use_case = _run_download_pending_use_case
+    run_download_single_post_use_case = _run_download_single_post_use_case
     media_service = _media_service
+
 
 
 @router.get("/api/profile-posts")
@@ -178,6 +185,29 @@ def get_profile_post_stats(profile_url: Optional[str] = Query(None)):
     return get_post_stats_use_case.execute(profile_url=profile_url)
 
 
+@router.get("/api/profile-posts/{post_id}")
+def get_single_profile_post(post_id: str):
+    """Retorna os detalhes de um post catalogado pelo post_id."""
+    post = get_single_post_use_case.execute(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} não encontrado")
+    return post.model_dump()
+
+
+@router.post("/api/profile-posts/{post_id}/download")
+def download_single_post(post_id: str, background_tasks: BackgroundTasks):
+    """Dispara o download individual de um post específico."""
+    status = get_process_status_use_case.execute()
+    if status.get("running"):
+        raise HTTPException(status_code=400, detail=f"Processo {status.get('name')} já está em execução.")
+
+    try:
+        background_tasks.add_task(run_download_single_post_use_case.execute, post_id)
+        return {"status": "started", "message": f"Download do post {post_id} iniciado em segundo plano"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.patch("/api/profile-posts/{post_id}/status")
 def patch_post_status(post_id: str, payload: StatusRequest):
     """Atualiza o status de um post catalogado."""
@@ -185,6 +215,7 @@ def patch_post_status(post_id: str, payload: StatusRequest):
     if not updated:
         raise HTTPException(status_code=404, detail=f"Post {post_id} não encontrado")
     return {"status": "success", "post_id": post_id, "new_status": payload.status}
+
 
 
 @router.post("/api/actions/list-posts")

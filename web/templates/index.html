@@ -221,26 +221,27 @@
         </button>
       </div>
 
-      <!-- Tabela de Posts -->
-      <div class="overflow-x-auto max-h-60 rounded-xl border border-slate-800">
+      <!-- Tabela de Posts com Preview e Ações Individualizadas -->
+      <div class="overflow-x-auto max-h-80 rounded-xl border border-slate-800 shadow-inner">
         <table class="w-full text-left text-xs text-slate-300">
-          <thead class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800 sticky top-0">
+          <thead class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800 sticky top-0 z-10">
             <tr>
+              <th class="p-2.5 w-16">Preview</th>
               <th class="p-2.5">Post ID</th>
               <th class="p-2.5">Tipo</th>
-              <th class="p-2.5">Preview / URL</th>
-              <th class="p-2.5">Mídias</th>
+              <th class="p-2.5">Conteúdo / Data</th>
               <th class="p-2.5">Status</th>
-              <th class="p-2.5">Descoberto em</th>
+              <th class="p-2.5 text-center">Ações</th>
             </tr>
           </thead>
           <tbody id="table-posts-body" class="divide-y divide-slate-800/60 bg-slate-950/40">
             <tr>
-              <td colspan="6" class="p-4 text-center text-slate-500 italic">Carregando posts catalogados...</td>
+              <td colspan="6" class="p-6 text-center text-slate-500 italic">Carregando posts catalogados...</td>
             </tr>
           </tbody>
         </table>
       </div>
+
     </div>
 
 
@@ -434,6 +435,56 @@
     </div>
   </div>
 
+  <!-- Modal Preview e Visualização de Post Catalogado -->
+  <div id="modal-post-detail" onclick="if(event.target === this) closeModal('modal-post-detail')" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-5 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-blue-400" id="post-modal-profile">Perfil Alvo</span>
+            <span class="text-slate-600">•</span>
+            <span class="text-xs font-mono text-slate-400" id="post-modal-id">POST_ID</span>
+          </div>
+          <h3 class="text-base font-bold text-white mt-0.5" id="post-modal-title">Visualização & Detalhes do Post</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <div id="post-modal-status"></div>
+          <button onclick="closeModal('modal-post-detail')" class="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800/50"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+      </div>
+
+      <!-- Corpo com Mídia e Legenda -->
+      <div class="space-y-4 overflow-y-auto pr-1">
+        <!-- Container Visualizador da Mídia -->
+        <div id="post-modal-media-container" class="w-full">
+          <!-- Renderizado via JS -->
+        </div>
+
+        <!-- Metadados -->
+        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-2">
+          <div class="flex justify-between items-center text-xs text-slate-400">
+            <span>Descoberto em: <strong id="post-modal-date" class="text-slate-200">--/--/----</strong></span>
+            <a id="post-modal-link" href="#" target="_blank" class="text-blue-400 hover:underline flex items-center gap-1 font-semibold">
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Abrir Link Direto
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer com Botão de Ação -->
+      <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+        <button onclick="closeModal('modal-post-detail')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">
+          Fechar
+        </button>
+        <button onclick="downloadSinglePostAction()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20">
+          <i data-lucide="download" class="w-4 h-4"></i> Baixar Mídia Este Post Agora
+        </button>
+      </div>
+    </div>
+  </div>
+
+
   <!-- Modal Scraper (Única Fonte da Verdade) -->
   <div id="modal-scraper" onclick="if(event.target === this) closeModal('modal-scraper')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
@@ -616,21 +667,51 @@
           else if (p.status === 'downloaded') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✅ Baixado</span>`;
           else if (p.status === 'error') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">❌ Erro</span>`;
 
+          const firstMedia = (p.media_items || [])[0];
+          const mediaUrl = firstMedia ? firstMedia.url : p.post_url;
+          let thumbMedia = `<div class="w-10 h-10 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 font-bold text-xs"><i data-lucide="file-text" class="w-4 h-4"></i></div>`;
+
+          if (p.post_type === 'image' || (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || (mediaUrl.includes('.fbcdn.net') && !mediaUrl.includes('.mp4'))))) {
+            thumbMedia = `<img src="${mediaUrl}" class="w-12 h-12 object-cover rounded-lg border border-slate-800 group-hover:scale-105 transition" onerror="this.onerror=null; this.src='https://placehold.co/100x100/0f172a/64748b?text=IMG';" />`;
+          } else if (p.post_type === 'video' || (mediaUrl && mediaUrl.includes('.mp4'))) {
+            thumbMedia = `<div class="relative w-12 h-12 rounded-lg bg-slate-900 border border-slate-800 overflow-hidden flex items-center justify-center text-blue-400"><i data-lucide="play-circle" class="w-6 h-6"></i></div>`;
+          } else {
+            thumbMedia = `<div class="w-12 h-12 rounded-lg bg-blue-950/40 border border-blue-900/40 flex items-center justify-center text-blue-400"><i data-lucide="facebook" class="w-5 h-5"></i></div>`;
+          }
+
           const tr = document.createElement('tr');
-          tr.className = 'hover:bg-slate-900/60 transition';
+          tr.className = 'hover:bg-slate-900/80 transition group';
           tr.innerHTML = `
-            <td class="p-2.5 font-mono text-slate-300 font-bold">${p.post_id}</td>
-            <td class="p-2.5 capitalize font-medium text-slate-400">${p.post_type === 'video' ? '📹 Vídeo' : '🖼️ Imagem'}</td>
-            <td class="p-2.5 max-w-xs truncate text-slate-300" title="${p.post_url}">${p.post_text_preview || p.post_url}</td>
-            <td class="p-2.5 font-semibold text-slate-400">${(p.media_items || []).length} mídia(s)</td>
+            <td class="p-2.5">
+              <div class="cursor-pointer" onclick="openPostPreviewModal('${p.post_id}')">
+                ${thumbMedia}
+              </div>
+            </td>
+            <td class="p-2.5 font-mono text-slate-300 font-bold text-xs">${p.post_id}</td>
+            <td class="p-2.5 capitalize font-medium text-slate-400 text-xs">${p.post_type === 'video' ? '📹 Vídeo' : '🖼️ Imagem'}</td>
+            <td class="p-2.5 max-w-xs text-slate-300">
+              <div class="truncate font-semibold text-slate-200 cursor-pointer hover:text-blue-400 transition" onclick="openPostPreviewModal('${p.post_id}')" title="${p.post_url}">${p.post_text_preview || p.post_url}</div>
+              <div class="text-[10px] text-slate-500 truncate">${dateStr}</div>
+            </td>
             <td class="p-2.5">${statusBadge}</td>
-            <td class="p-2.5 text-slate-500 whitespace-nowrap">${dateStr}</td>
+            <td class="p-2.5 whitespace-nowrap">
+              <div class="flex items-center gap-1.5">
+                <button onclick="openPostPreviewModal('${p.post_id}')" class="px-2.5 py-1 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-700 flex items-center gap-1">
+                  <i data-lucide="eye" class="w-3.5 h-3.5"></i> Ver
+                </button>
+                <button onclick="downloadSinglePostAction('${p.post_id}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-sm">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i> Baixar
+                </button>
+              </div>
+            </td>
           `;
           tbody.appendChild(tr);
         });
+        lucide.createIcons();
         loadPostStats();
       } catch (e) {}
     }
+
 
     function filterPostStatus(status) {
       currentPostFilterStatus = status;
@@ -640,6 +721,88 @@
       });
       loadProfilePosts();
     }
+
+    let activePostId = null;
+
+    async function openPostPreviewModal(postId) {
+      activePostId = postId;
+      try {
+        const res = await fetch(`/api/profile-posts/${postId}`);
+        if (!res.ok) return alert('Post não encontrado');
+        const post = await res.json();
+
+        document.getElementById('post-modal-id').innerText = post.post_id;
+        document.getElementById('post-modal-profile').innerText = post.profile_name || post.profile_url;
+        document.getElementById('post-modal-date').innerText = formatDateBR(post.discovered_at);
+        document.getElementById('post-modal-link').href = post.post_url;
+
+        let statusHtml = `<span class="px-2.5 py-1 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">⏳ Pendente</span>`;
+        if (post.status === 'downloaded') statusHtml = `<span class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✅ Baixado</span>`;
+        else if (post.status === 'downloading') statusHtml = `<span class="px-2.5 py-1 rounded text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse">🔵 Baixando</span>`;
+        else if (post.status === 'error') statusHtml = `<span class="px-2.5 py-1 rounded text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">❌ Erro</span>`;
+        document.getElementById('post-modal-status').innerHTML = statusHtml;
+
+        const mediaContainer = document.getElementById('post-modal-media-container');
+        mediaContainer.innerHTML = '';
+
+        const firstMedia = (post.media_items || [])[0];
+        const mediaUrl = firstMedia ? firstMedia.url : post.post_url;
+
+        if (post.post_type === 'image' || (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || (mediaUrl.includes('.fbcdn.net') && !mediaUrl.includes('.mp4'))))) {
+          mediaContainer.innerHTML = `
+            <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
+              <img src="${mediaUrl}" alt="Preview" class="max-h-[400px] w-auto object-contain rounded-xl shadow-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Preview+indisponivel';" />
+            </div>`;
+        } else if (post.post_type === 'video' || (mediaUrl && mediaUrl.includes('.mp4'))) {
+          mediaContainer.innerHTML = `
+            <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
+              <video controls autoplay muted class="max-h-[400px] w-full rounded-xl shadow-2xl">
+                <source src="${mediaUrl}" type="video/mp4">
+                Seu navegador não suporta vídeos.
+              </video>
+            </div>`;
+        } else {
+          mediaContainer.innerHTML = `
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center space-y-4">
+              <div class="w-16 h-16 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
+                <i data-lucide="link" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-white mb-1">Post / Reel do Facebook</h4>
+                <p class="text-xs text-slate-400 max-w-md mx-auto truncate">${post.post_url}</p>
+              </div>
+              <a href="${post.post_url}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-md">
+                <i data-lucide="external-link" class="w-4 h-4"></i> Abrir Post Original no Facebook
+              </a>
+            </div>`;
+        }
+
+        document.getElementById('modal-post-detail').classList.remove('hidden');
+        lucide.createIcons();
+      } catch (err) {
+        alert('Erro ao abrir preview do post');
+      }
+    }
+
+    async function downloadSinglePostAction(postId) {
+      const targetId = postId || activePostId;
+      if (!targetId) return;
+      try {
+        const res = await fetch(`/api/profile-posts/${targetId}/download`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message || 'Download iniciado!');
+          closeModal('modal-post-detail');
+          openLogsModal();
+          checkProcessStatus();
+        } else {
+          alert(data.detail || 'Erro ao iniciar download.');
+        }
+      } catch (err) {
+        alert('Erro: ' + err);
+      }
+    }
+
 
     async function startListPostsUI() {
       const url = prompt('Digite a URL do perfil alvo para catalogar posts (Step 1):', document.getElementById('scraper-url')?.value || 'https://www.facebook.com/perfil');

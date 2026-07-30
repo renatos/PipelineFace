@@ -59,3 +59,27 @@ class RunDownloadPendingUseCase:
         cmd = ["python3", "scraper/facebook_scraper.py", "--target", target_url, "--download-pending", "--batch-size", str(resolved_batch_size)]
         self.run_process_func(cmd, f"Download em Lote ({resolved_batch_size} posts)")
         return {"status": "started", "message": f"Download de {resolved_batch_size} posts pendentes iniciado para {target_url}"}
+
+
+class GetSinglePostUseCase:
+    def __init__(self, repository: AbstractProfilePostRepository):
+        self.repository = repository
+
+    def execute(self, post_id: str) -> Optional[ProfilePost]:
+        return self.repository.find_by_post_id(post_id)
+
+
+class RunDownloadSinglePostUseCase:
+    def __init__(self, run_process_func: Callable[[List[str], str], None], repository: AbstractProfilePostRepository):
+        self.run_process_func = run_process_func
+        self.repository = repository
+
+    def execute(self, post_id: str) -> Dict[str, str]:
+        post = self.repository.find_by_post_id(post_id)
+        if not post:
+            raise KeyError(f"Post {post_id} não encontrado")
+
+        cmd = ["python3", "scraper/facebook_scraper.py", "--target", post.profile_url, "--download-pending", "--batch-size", "1"]
+        self.run_process_func(cmd, f"Download do Post ({post_id})")
+        return {"status": "started", "message": f"Download do post {post_id} iniciado"}
+
