@@ -1139,6 +1139,8 @@
       } catch (err) { alert(err); }
     }
 
+    let wasProcessRunning = false;
+
     async function checkProcessStatus() {
       try {
         const res = await fetch('/api/process-status');
@@ -1149,6 +1151,7 @@
         const lblRunning = document.getElementById('lbl-running-process');
 
         if (data.running) {
+          wasProcessRunning = true;
           btnStop.classList.remove('hidden');
           modalBtnStop.classList.remove('hidden');
           lblRunning.innerText = `Parar ${data.name || 'Execução'}`;
@@ -1157,12 +1160,22 @@
             terminal.innerHTML = data.logs.map(l => `<p>${l}</p>`).join('');
             terminal.scrollTop = terminal.scrollHeight;
           }
+          // Atualizar lista de posts e contadores em tempo real enquanto roda
+          loadProfilePosts();
+          loadPostStats();
         } else {
           btnStop.classList.add('hidden');
           modalBtnStop.classList.add('hidden');
+          if (wasProcessRunning) {
+            wasProcessRunning = false;
+            loadStrategies();
+            loadProfilePosts();
+            loadPostStats();
+          }
         }
       } catch (e) {}
     }
+
 
     function setFilterStatus(status) {
       currentFilterStatus = status;
