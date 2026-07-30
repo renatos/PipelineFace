@@ -150,10 +150,19 @@ class KnowledgePipeline:
             return None
 
     def get_original_url(self, filename: str, basename: str) -> str:
-        # 1. Tentar consultar MongoDB download_history
+        # 1. Tentar extrair o post_id diretamente do padrão do arquivo "Vídeo_POSTID.mp4"
+        post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', filename)
+        target_post_id = post_id_match.group(1) if post_id_match else None
+
         db = self.get_mongo_db()
         if db is not None:
             try:
+                # Buscar na coleção profile_posts por post_id ou mídias contidas nele
+                if target_post_id:
+                    post_doc = db["profile_posts"].find_one({"post_id": target_post_id})
+                    if post_doc and post_doc.get("post_url"):
+                        return post_doc["post_url"]
+
                 url_hash = basename.replace("fb_", "")
                 doc = db["download_history"].find_one({
                     "$or": [
@@ -184,6 +193,11 @@ class KnowledgePipeline:
                                 return item_url
                 except Exception:
                     pass
+
+        # 3. Fallback: se for uma URL/ID numérica direta do Facebook
+        if target_post_id:
+            return f"https://www.facebook.com/reel/{target_post_id}"
+
         return None
 
     def get_processed_basenames(self) -> set[str]:
