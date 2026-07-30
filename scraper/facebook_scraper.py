@@ -882,21 +882,26 @@ class FacebookScraper:
                         }
 
 
+                        # Se for um permalink valido do Facebook usa a URL do post, caso contrario usa a propria URL direta da midia
+                        has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid="])
+                        post_url = item_url if has_fb_permalink else item_url
+
                         post_type = item["type"]
                         post_doc = {
                             "post_id": post_id,
                             "profile_url": self.target_url,
                             "profile_name": profile_name,
-                            "post_url": item_url if ("facebook.com" in item_url and ("/posts/" in item_url or "/videos/" in item_url or "/reel/" in item_url)) else f"{self.target_url}/posts/{post_id}",
+                            "post_url": post_url,
                             "post_type": post_type,
                             "status": "pending",
                             "media_items": [media_item],
-                            "post_text_preview": item_url[:100],
+                            "post_text_preview": item.get("text") or item_url[:100],
                             "scroll_position": scroll_num,
                             "discovered_at": datetime.now().isoformat(),
                             "updated_at": datetime.now().isoformat(),
                             "error_message": None
                         }
+
 
                         if db is not None:
                             try:
