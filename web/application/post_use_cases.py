@@ -87,7 +87,7 @@ class RunDownloadSinglePostUseCase:
         if not post:
             raise KeyError(f"Post {post_id} não encontrado")
 
-        cmd = ["python3", "scraper/facebook_scraper.py", "--target", post.profile_url, "--download-pending", "--batch-size", "1"]
+        cmd = ["python3", "scraper/facebook_scraper.py", "--target", post.profile_url, "--download-pending", "--post-id", post_id]
         self.run_process_func(cmd, f"Download do Post ({post_id})")
         return {"status": "started", "message": f"Download do post {post_id} iniciado"}
 

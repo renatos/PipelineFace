@@ -1028,24 +1028,30 @@ class FacebookScraper:
     # Step 2: Download em Lotes de Posts Pendentes
     # --------------------------------------------------------
 
-    def download_pending(self, batch_size: int = 10):
+    def download_pending(self, batch_size: int = 10, target_post_id: Optional[str] = None):
         """Busca até N posts pendentes na coleção profile_posts e realiza o download das mídias em lote."""
         db = self._init_mongo_client()
         if db is None:
             console.print("[bold red]❌ Conexão com MongoDB necessária para download de pendentes.[/bold red]")
             return
 
-        pending_docs = list(db["profile_posts"].find(
-            {"profile_url": self.target_url, "status": "pending"},
-            {"_id": 0}
-        ).sort("discovered_at", 1).limit(batch_size))
-
-        if not pending_docs:
-            # Fallback: buscar qualquer pending sem filtro de profile_url exato
+        if target_post_id:
             pending_docs = list(db["profile_posts"].find(
-                {"status": "pending"},
+                {"post_id": target_post_id},
+                {"_id": 0}
+            ))
+        else:
+            pending_docs = list(db["profile_posts"].find(
+                {"profile_url": self.target_url, "status": "pending"},
                 {"_id": 0}
             ).sort("discovered_at", 1).limit(batch_size))
+
+            if not pending_docs:
+                # Fallback: buscar qualquer pending sem filtro de profile_url exato
+                pending_docs = list(db["profile_posts"].find(
+                    {"status": "pending"},
+                    {"_id": 0}
+                ).sort("discovered_at", 1).limit(batch_size))
 
         if not pending_docs:
             console.print("[yellow]⚠️ Nenhum post pendente encontrado para download.[/yellow]")
@@ -1535,6 +1541,12 @@ Exemplos:
         help="Step 2: Baixar mídias dos posts com status 'pending' em lote",
     )
     parser.add_argument(
+        "--post-id",
+        type=str,
+        default=None,
+        help="Baixar especificamente um post_id único",
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=int(os.environ.get("SCRAPER_DOWNLOAD_BATCH_SIZE", 10)),
@@ -1592,7 +1604,7 @@ Exemplos:
 
     # Modo Step 2: Download em Lote de Posts Pendentes
     if args.download_pending:
-        scraper.download_pending(batch_size=args.batch_size)
+        scraper.download_pending(batch_size=args.batch_size, target_post_id=args.post_id)
         return
 
     # Modo legado / direto: Coleta e Download na mesma sessão
