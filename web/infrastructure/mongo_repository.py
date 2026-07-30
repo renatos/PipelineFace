@@ -377,7 +377,28 @@ class MongoProfilePostRepository(AbstractProfilePostRepository):
             query["status"] = status
 
         docs = list(self.collection.find(query, {"_id": 0}).sort("discovered_at", -1).limit(limit))
-        return [ProfilePost(**d) for d in docs]
+        # Autocorreção: atualizar post_type de posts que contenham URLs de vídeos/reels mas estejam salvos como image ou post
+        updated_docs = []
+        for d in docs:
+            post_url = d.get("post_url", "")
+            media_items = d.get("media_items", [])
+            has_video_url = any(k in post_url for k in ["/reel/", "/videos/", "/watch/", ".mp4"]) or any(
+                m.get("type") == "video" or any(k in (m.get("url") or "") for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
+                for m in media_items
+            )
+            if has_video_url and d.get("post_type") != "video":
+                d["post_type"] = "video"
+                try:
+                    self.collection.update_one({"post_id": d["post_id"]}, {"$set": {"post_type": "video"}})
+                except Exception:
+                    pass
+            updated_docs.append(d)
+
+        return [ProfilePost(**d) for d in updated_docs]
+
+    def delete_post(self, post_id: str) -> bool:
+        res = self.collection.delete_one({"post_id": post_id})
+        return res.deleted_count > 0
 
     def get_pending_posts(self, profile_url: Optional[str] = None, limit: int = 10) -> List[ProfilePost]:
         query = {"status": "pending"}

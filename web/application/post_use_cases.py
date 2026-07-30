@@ -33,6 +33,14 @@ class UpdatePostStatusUseCase:
         return self.repository.update_status(post_id=post_id, status=status, error_message=error_message)
 
 
+class DeletePostUseCase:
+    def __init__(self, repository: AbstractProfilePostRepository):
+        self.repository = repository
+
+    def execute(self, post_id: str) -> bool:
+        return self.repository.delete_post(post_id=post_id)
+
+
 class RunListPostsUseCase:
     def __init__(self, run_process_func: Callable[[List[str], str], None], config_repo: AbstractAppConfigRepository):
         self.run_process_func = run_process_func

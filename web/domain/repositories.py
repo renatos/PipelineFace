@@ -138,6 +138,11 @@ class AbstractProfilePostRepository(ABC):
         pass
 
     @abstractmethod
+    def delete_post(self, post_id: str) -> bool:
+        """Remove um post catalogado do banco pelo post_id."""
+        pass
+
+    @abstractmethod
     def get_stats(self, profile_url: Optional[str] = None) -> Dict[str, int]:
         """Retorna estatísticas dos posts (total, pending, downloading, downloaded, processed, error)."""
         pass

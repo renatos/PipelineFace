@@ -272,6 +272,27 @@ class FacebookScraper:
             return True
         return False
 
+    def _extract_post_and_media_ids(self, url: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Extrai o ID do post (priorizando pcb/álbum) e o ID individual da mídia (fbid).
+        Retorna (post_id, media_fbid).
+        """
+        if not url:
+            return None, None
+
+        # Verificar se possui agrupador de post/álbum pcb.XXXXX
+        pcb_match = re.search(r'set=pcb\.(\d+)', url)
+        fbid_match = re.search(r'fbid=(\d+)', url)
+
+        media_fbid = fbid_match.group(1) if fbid_match else None
+
+        if pcb_match:
+            post_id = pcb_match.group(1)
+            return post_id, media_fbid
+
+        post_id = self._extract_post_id(url)
+        return post_id, media_fbid
+
     def _extract_post_id(self, url: str) -> Optional[str]:
         """Extrai um identificador único de post a partir da URL do Facebook."""
         if not url:
@@ -287,6 +308,11 @@ class FacebookScraper:
         for ign in ignored_substrings:
             if ign in url_lower and not re.search(r'/reel/\w{8,}', url):
                 return None
+
+        # Checar se há agrupador pcb primeiro
+        pcb_match = re.search(r'set=pcb\.(\d+)', url)
+        if pcb_match:
+            return pcb_match.group(1)
 
         patterns = [
             r'/posts/(pfbid\w+)',
@@ -605,6 +631,11 @@ class FacebookScraper:
             parsed = urlparse(url)
             if "/reel/" in parsed.path or "/posts/" in parsed.path or "/videos/" in parsed.path:
                 return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+            if "/photo" in parsed.path:
+                params = parse_qs(parsed.query)
+                kept = {k: v[0] for k, v in params.items() if k in ("fbid", "set")}
+                new_query = urlencode(kept)
+                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}" if new_query else f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
         except Exception:
             pass
         return url
@@ -864,29 +895,37 @@ class FacebookScraper:
 
                     for item in raw_items:
                         item_url = self._clean_facebook_url(item["url"])
-                        post_id = self._extract_post_id(item_url)
-                        if not post_id or post_id in seen_post_ids:
+                        post_id, media_fbid = self._extract_post_and_media_ids(item_url)
+                        if not post_id:
                             continue
 
-                        seen_post_ids.add(post_id)
+                        # Determinar tipo de mídia com precisão (vídeo/reel vs imagem)
+                        is_video = (
+                            item["type"] == "video"
+                            or any(k in item_url.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
+                        )
+                        resolved_type = "video" if is_video else "image"
 
-                        # Gerar media_id único
-                        media_id = f"m_{post_id[:16]}_0"
+                        # Gerar media_id único (usando media_fbid se disponível ou post_id)
+                        unique_sub_id = media_fbid or post_id[:16]
+                        media_id = f"m_{unique_sub_id}_0"
                         media_item = {
                             "media_id": media_id,
                             "url": item_url,
-                            "type": item["type"],
+                            "type": resolved_type,
                             "filename": None,
                             "downloaded": False,
                             "download_error": None
                         }
 
+                        is_new_post = post_id not in seen_post_ids
+                        seen_post_ids.add(post_id)
 
                         # Se for um permalink valido do Facebook usa a URL do post, caso contrario usa a propria URL direta da midia
-                        has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid="])
+                        has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid=", "set=pcb"])
                         post_url = item_url if has_fb_permalink else item_url
 
-                        post_type = item["type"]
+                        post_type = resolved_type
                         post_doc = {
                             "post_id": post_id,
                             "profile_url": self.target_url,
@@ -902,9 +941,21 @@ class FacebookScraper:
                             "error_message": None
                         }
 
-
                         if db is not None:
                             try:
+                                # Adicionar mídia ao array media_items sem duplicar pelo media_id
+                                # Caso o post já possua mídias, atualiza o post_type para "album" se houver múltiplos itens de mídia
+                                existing_post = db["profile_posts"].find_one({"post_id": post_id})
+                                existing_medias = existing_post.get("media_items", []) if existing_post else []
+                                
+                                # Filtrar duplicatas por media_id
+                                media_exists = any(m.get("media_id") == media_id for m in existing_medias)
+                                updated_medias = list(existing_medias)
+                                if not media_exists:
+                                    updated_medias.append(media_item)
+
+                                final_post_type = "album" if len(updated_medias) > 1 else post_type
+
                                 res = db["profile_posts"].update_one(
                                     {"post_id": post_id},
                                     {
@@ -912,8 +963,8 @@ class FacebookScraper:
                                             "profile_url": self.target_url,
                                             "profile_name": profile_name,
                                             "post_url": post_doc["post_url"],
-                                            "post_type": post_type,
-                                            "media_items": post_doc["media_items"],
+                                            "post_type": final_post_type,
+                                            "media_items": updated_medias,
                                             "scroll_position": scroll_num,
                                             "updated_at": datetime.now().isoformat()
                                         },
@@ -931,11 +982,12 @@ class FacebookScraper:
                             except Exception as mongo_err:
                                 console.print(f"[yellow]⚠️ Erro ao salvar post no MongoDB: {mongo_err}[/yellow]")
 
-                        send_telemetry_event(
-                            self.run_id, "POST_DISCOVERED", status="info", target_url=self.target_url,
-                            message=f"Post descoberto: {post_id}",
-                            metrics={"post_id": post_id, "post_type": post_type, "scroll": scroll_num}
-                        )
+                        if is_new_post:
+                            send_telemetry_event(
+                                self.run_id, "POST_DISCOVERED", status="info", target_url=self.target_url,
+                                message=f"Post descoberto: {post_id}",
+                                metrics={"post_id": post_id, "post_type": post_type, "scroll": scroll_num}
+                            )
 
                     # Log de progresso a cada 5 iterações
                     if scroll_num % 5 == 0 or scroll_num == 1:

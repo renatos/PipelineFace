@@ -25,7 +25,7 @@ from web.infrastructure.media_service import MediaStreamingService
 
 from web.application.post_use_cases import (
     ListProfilePostsUseCase, GetSinglePostUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase,
-    RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
+    DeletePostUseCase, RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
 )
 
 
@@ -107,7 +107,7 @@ update_config_use_case: UpdateConfigUseCase = None
 list_posts_use_case: ListProfilePostsUseCase = None
 get_single_post_use_case: GetSinglePostUseCase = None
 get_post_stats_use_case: GetPostStatsUseCase = None
-update_post_status_use_case: UpdatePostStatusUseCase = None
+delete_post_use_case: DeletePostUseCase = None
 run_list_posts_use_case: RunListPostsUseCase = None
 run_download_pending_use_case: RunDownloadPendingUseCase = None
 run_download_single_post_use_case: RunDownloadSinglePostUseCase = None
@@ -123,6 +123,7 @@ def init_routes(
     _save_profile_use_case, _get_profiles_use_case,
     _get_all_configs_use_case, _get_config_use_case, _update_config_use_case,
     _list_posts_use_case, _get_single_post_use_case, _get_post_stats_use_case, _update_post_status_use_case,
+    _delete_post_use_case,
     _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
     _media_service
 ):
@@ -134,6 +135,7 @@ def init_routes(
     global save_profile_use_case, get_profiles_use_case
     global get_all_configs_use_case, get_config_use_case, update_config_use_case
     global list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case
+    global delete_post_use_case
     global run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case
     global media_service
 
@@ -161,6 +163,7 @@ def init_routes(
     get_single_post_use_case = _get_single_post_use_case
     get_post_stats_use_case = _get_post_stats_use_case
     update_post_status_use_case = _update_post_status_use_case
+    delete_post_use_case = _delete_post_use_case
     run_list_posts_use_case = _run_list_posts_use_case
     run_download_pending_use_case = _run_download_pending_use_case
     run_download_single_post_use_case = _run_download_single_post_use_case
@@ -192,6 +195,16 @@ def get_single_profile_post(post_id: str):
     if not post:
         raise HTTPException(status_code=404, detail=f"Post {post_id} não encontrado")
     return post.model_dump()
+
+
+@router.delete("/api/profile-posts/{post_id}")
+@router.post("/api/profile-posts/{post_id}/delete")
+def delete_profile_post(post_id: str):
+    """Remove um post catalogado do banco de dados pelo post_id."""
+    deleted = delete_post_use_case.execute(post_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} não encontrado")
+    return {"status": "success", "post_id": post_id, "message": f"Post {post_id} removido com sucesso"}
 
 
 @router.post("/api/profile-posts/{post_id}/download")

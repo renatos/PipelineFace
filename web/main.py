@@ -105,6 +105,7 @@ def create_app() -> FastAPI:
     get_single_post_use_case = GetSinglePostUseCase(post_repo)
     get_post_stats_use_case = GetPostStatsUseCase(post_repo)
     update_post_status_use_case = UpdatePostStatusUseCase(post_repo)
+    delete_post_use_case = DeletePostUseCase(post_repo)
 
     def on_process_complete():
         sync_use_case.execute()
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
         save_profile_use_case, get_profiles_use_case,
         get_all_configs_use_case, get_config_use_case, update_config_use_case,
         list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case,
+        delete_post_use_case,
         run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case,
         media_service
     )
