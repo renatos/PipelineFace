@@ -753,11 +753,15 @@ class FacebookScraper:
                 last_height = 0
                 no_change_count = 0
 
-                console.print(f"\n[bold]📜 Iniciando scroll para catalogar posts (máx {self.max_scrolls} iterações)...[/bold]\n")
+                # Para o Step 1 (catalogar todos os posts), garante limite alto de scrolls ate o fim da pagina
+                max_list_scrolls = max(self.max_scrolls, 200)
 
-                for scroll_num in range(1, self.max_scrolls + 1):
+                console.print(f"\n[bold]📜 Iniciando scroll contínuo para catalogar TODOS os posts (até {max_list_scrolls} iterações ou fim do feed)...[/bold]\n")
+
+                for scroll_num in range(1, max_list_scrolls + 1):
                     page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
                     time.sleep(self.scroll_pause)
+
 
                     # Extrair elementos de mídia e links de post da página
                     page_videos = self._extract_video_urls(page)
@@ -843,15 +847,21 @@ class FacebookScraper:
                             metrics={"post_id": post_id, "post_type": post_type, "scroll": scroll_num}
                         )
 
+                    # Log de progresso a cada 5 iterações
+                    if scroll_num % 5 == 0 or scroll_num == 1:
+                        console.print(f"  📊 Scroll {scroll_num}/{max_list_scrolls} — {len(seen_post_ids)} posts descobertos até o momento...")
+
                     # Checar fim do conteúdo
                     new_height = page.evaluate("document.documentElement.scrollHeight")
                     if new_height == last_height:
                         no_change_count += 1
                         if no_change_count >= 5:
+                            console.print(f"[yellow]⚠️ Fim do feed de posts detectado no scroll {scroll_num}.[/yellow]")
                             break
                     else:
                         no_change_count = 0
                     last_height = new_height
+
 
                     if scroll_num % 10 == 0:
                         self._dismiss_popups(page)
