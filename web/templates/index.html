@@ -1072,8 +1072,9 @@
 
         if (mode === 'list_posts') {
           endpoint = '/api/actions/list-posts';
-          bodyPayload = { target_url: url, max_scrolls: maxScrolls };
+          bodyPayload = { target_url: url };
         } else if (mode === 'download_pending') {
+
           endpoint = '/api/actions/download-pending';
           bodyPayload = { target_url: url, batch_size: batchSize };
         } else {
