@@ -33,7 +33,7 @@ from web.application.process_use_case import (
 )
 from web.application.post_use_cases import (
     ListProfilePostsUseCase, GetSinglePostUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase,
-    RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
+    DeletePostUseCase, RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
 )
 
 from web.presentation.routes import router as api_router, init_routes
