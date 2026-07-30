@@ -256,7 +256,7 @@ class KnowledgePipeline:
             console.print(f"[yellow]⚠️  Falha ao extrair áudio: {e}[/yellow]")
             audio_path = None
 
-        fps_param = f"fps={self.fps_extraction},scale=720:-1" if hasattr(self, 'fps_extraction') and self.fps_extraction != "1/10" else "fps=1/5,scale=720:-1"
+        fps_param = f"fps={self.fps_extraction},scale=720:-1" if hasattr(self, 'fps_extraction') and self.fps_extraction != "1/10" else "fps=1/8,scale=720:-1"
         cmd_frames = [
             "ffmpeg", "-y", "-i", str(video_path),
             "-vf", fps_param, "-q:v", "3",
