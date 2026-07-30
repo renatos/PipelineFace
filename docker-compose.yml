@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     network_mode: "host"
     environment:
+      - TZ=America/Sao_Paulo
       - MONGO_URI=mongodb://localhost:27017
       - WHISPER_URL=http://localhost:9000/asr
       - OLLAMA_URL=http://localhost:11434/api/chat
@@ -41,8 +42,11 @@ services:
     restart: unless-stopped
     network_mode: "host"
     entrypoint: ["tail", "-f", "/dev/null"]
+    environment:
+      - TZ=America/Sao_Paulo
     volumes:
       - .:/app
+
 
 volumes:
   mongo-data:

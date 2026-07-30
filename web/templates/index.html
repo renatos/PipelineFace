@@ -560,6 +560,19 @@
       });
     });
 
+    function formatDateBR(dateStr) {
+      if (!dateStr) return 'N/A';
+      try {
+        let d = new Date(dateStr);
+        if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.match(/-\d{2}:\d{2}$/)) {
+          d = new Date(dateStr + 'Z');
+        }
+        return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
     // ---- POSTS CATALOGADOS (STEP 1 E STEP 2) ----
     function togglePostsSection() {
       const sec = document.getElementById('section-posts-catalog');
@@ -596,8 +609,9 @@
         }
 
         posts.forEach(p => {
-          const dateStr = p.discovered_at ? new Date(p.discovered_at).toLocaleString('pt-BR') : 'N/A';
+          const dateStr = formatDateBR(p.discovered_at);
           let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">⏳ Pendente</span>`;
+
           if (p.status === 'downloading') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse">🔵 Baixando</span>`;
           else if (p.status === 'downloaded') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✅ Baixado</span>`;
           else if (p.status === 'error') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">❌ Erro</span>`;
@@ -918,7 +932,7 @@
         tbody.innerHTML = '';
 
         (data.events || []).forEach(ev => {
-          const dateStr = new Date(ev.created_at).toLocaleString('pt-BR');
+          const dateStr = formatDateBR(ev.created_at);
           let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">${ev.status}</span>`;
           if (ev.status === 'error') {
             statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">ERROR</span>`;
