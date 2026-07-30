@@ -723,8 +723,9 @@
     }
 
     async function deletePostAction(postId) {
-      const targetId = postId || activePostId;
-      if (!targetId) return;
+      const rawTargetId = postId || activePostId;
+      if (!rawTargetId) return;
+      const targetId = encodeURIComponent(rawTargetId);
 
       try {
         let res = await fetch(`/api/profile-posts/${targetId}`, { method: 'DELETE' });
