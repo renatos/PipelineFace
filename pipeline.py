@@ -411,31 +411,196 @@ class KnowledgePipeline:
         except Exception:
             return raw_transcription
 
-    def ocr_image(self, image_path: Path) -> str:
-        """OCR dedicado com Tesseract + fallback Moondream (rejeitando coordenadas de bounding box)."""
-        texts = []
+    def analyze_and_filter_frames(self, frame_paths: list[Path], output_dir: Path) -> tuple[list[dict], list[str]]:
+        """Analisa frames de vídeo via visão (Moondream) e filtra frames úteis (telas, ferramentas, não rostos)."""
+        import shutil
+        output_dir.mkdir(parents=True, exist_ok=True)
+        descriptions = []
+        saved_paths = []
+
+        for frame_path in frame_paths:
+            prompt = (
+                "Classify this video frame: Is it a SCREEN/TOOL (showing a website, app, dashboard, search engine, or tool interface) "
+                "or a FACE/PERSON (just showing a person talking to camera)? "
+                "If SCREEN/TOOL: transcribe ALL text visible. If FACE/PERSON: respond only 'FACE'. "
+                "Respond in Portuguese."
+            )
+            response = self.query_ollama(self.vision_model, prompt, image_path=frame_path)
+
+            if not response or response.strip().upper() in ["FACE", "ROSTO", "PESSOA"]:
+                continue
+
+            # Frame contém conteúdo visual útil — salvar e registrar
+            dest_path = output_dir / frame_path.name
+            try:
+                shutil.copy2(frame_path, dest_path)
+                saved_paths.append(str(dest_path))
+                descriptions.append({
+                    "frame": frame_path.name,
+                    "description": response.strip()
+                })
+            except Exception:
+                pass
+
+        # Se nenhum frame foi classificado como tela, usar OCR Tesseract nos frames
+        if not descriptions:
+            for frame_path in frame_paths[:5]:  # limitar a 5 frames
+                try:
+                    import pytesseract
+                    prep_img = self.preprocess_image_for_ocr(frame_path)
+                    if prep_img:
+                        text = pytesseract.image_to_string(prep_img, lang='por+eng', config='--psm 6')
+                        if text and len(text.strip()) > 30:
+                            dest_path = output_dir / frame_path.name
+                            shutil.copy2(frame_path, dest_path)
+                            saved_paths.append(str(dest_path))
+                            descriptions.append({
+                                "frame": frame_path.name,
+                                "description": f"[OCR Tesseract]:\n{text.strip()}"
+                            })
+                except Exception:
+                    pass
+
+        return descriptions, saved_paths
+
+    def get_post_metadata(self, filename: str, basename: str) -> dict:
+        """Busca metadados enriquecidos do post original em profile_posts."""
+        db = self.get_mongo_db()
+        if db is None:
+            return {}
 
         try:
-            import pytesseract
-            from PIL import Image
-            img = Image.open(image_path)
-            text = pytesseract.image_to_string(img, lang='por+eng')
-            if text and len(text.strip()) > 15:
-                texts.append(f"[OCR Tesseract]:\n{text.strip()}")
-        except Exception as e:
+            post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', filename)
+            target_post_id = post_id_match.group(1) if post_id_match else None
+
+            post_doc = None
+            if target_post_id:
+                post_doc = db["profile_posts"].find_one({"post_id": target_post_id})
+
+            if not post_doc:
+                post_doc = db["profile_posts"].find_one({"media_items.filename": filename})
+
+            if not post_doc:
+                url_hash = basename.replace("fb_", "")
+                dl_doc = db["download_history"].find_one({"url_hash": url_hash})
+                if dl_doc and dl_doc.get("post_id"):
+                    post_doc = db["profile_posts"].find_one({"post_id": dl_doc["post_id"]})
+
+            if post_doc:
+                return {
+                    "author": post_doc.get("profile_name", "Desconhecido"),
+                    "author_url": post_doc.get("profile_url"),
+                    "post_text_preview": post_doc.get("post_text_preview"),
+                    "post_type": post_doc.get("post_type"),
+                    "discovered_at": post_doc.get("discovered_at"),
+                }
+        except Exception:
             pass
 
-        prompt_ocr = (
-            "Read and transcribe ALL text visible in this image. "
-            "Output ONLY the transcribed text in portuguese. Do not output coordinates or numbers in brackets."
-        )
-        vision_text = self.query_ollama(self.vision_model, prompt_ocr, image_path=image_path)
-        
-        # Filtrar se o modelo retornou apenas coordenadas de caixas como [0.12, 0.13, ...]
-        if vision_text and not re.search(r'^\s*\[\s*\d+\.\d+,\s*\d+\.\d+', vision_text):
-            texts.append(f"[OCR Visão]:\n{vision_text}")
+        return {}
+
+    def preprocess_image_for_ocr(self, image_path: Path):
+        """Aplica escala de cinza, ampliação e contraste para maximizar acurácia de OCR em infográficos."""
+        try:
+            import cv2
+            from PIL import Image, ImageEnhance, ImageFilter
+
+            img = cv2.imread(str(image_path))
+            if img is None:
+                return Image.open(image_path)
+
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Ampliar imagem se a resolução for baixa (melhora muito leitura de fontes de infográficos)
+            h, w = gray.shape
+            if w < 1200:
+                scale = 1200 / w
+                gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+
+            pil_img = Image.fromarray(gray)
+            
+            # Aumentar contraste e nitidez
+            enhancer = ImageEnhance.Contrast(pil_img)
+            pil_img = enhancer.enhance(2.0)
+            sharpener = ImageEnhance.Sharpness(pil_img)
+            pil_img = sharpener.enhance(1.5)
+
+            return pil_img
+        except Exception:
+            try:
+                from PIL import Image
+                return Image.open(image_path)
+            except Exception:
+                return None
+
+    def ocr_image(self, image_path: Path, carousel_paths: list[Path] = None) -> str:
+        """OCR dedicado com suporte a carrossel de imagens (slides)."""
+        all_paths = carousel_paths if carousel_paths else [image_path]
+        texts = []
+
+        for idx, p in enumerate(all_paths, 1):
+            slide_text = ""
+            try:
+                import pytesseract
+                prep_img = self.preprocess_image_for_ocr(p)
+                if prep_img:
+                    t = pytesseract.image_to_string(prep_img, lang='por+eng', config='--psm 6')
+                    if not t or len(t.strip()) < 15:
+                        t = pytesseract.image_to_string(prep_img, lang='por+eng', config='--psm 3')
+                    if t and len(t.strip()) > 15:
+                        slide_text = t.strip()
+            except Exception:
+                pass
+
+            if not slide_text:
+                try:
+                    prompt_ocr = (
+                        "Read and transcribe ALL text visible in this image. "
+                        "Output ONLY the transcribed text in portuguese. Do not output coordinates or numbers in brackets."
+                    )
+                    vision_text = self.query_ollama(self.vision_model, prompt_ocr, image_path=p)
+                    if vision_text and not re.search(r'^\s*\[\s*\d+\.\d+,\s*\d+\.\d+', vision_text):
+                        slide_text = vision_text.strip()
+                except Exception:
+                    pass  # Moondream pode retornar 400 em certas imagens — Tesseract já é o primário
+
+            if slide_text:
+                header = f"--- Slide {idx}/{len(all_paths)} ({p.name}) ---" if len(all_paths) > 1 else "[OCR Conteúdo Visual]:"
+                texts.append(f"{header}\n{slide_text}")
 
         return "\n\n".join(texts) if texts else ""
+
+    def get_carousel_related_images(self, target_filepath: Path) -> list[Path]:
+        """Localiza imagens no mesmo diretório de input que pertençam ao mesmo post/carrossel."""
+        if not target_filepath.parent.exists():
+            return [target_filepath]
+
+        db = self.get_mongo_db()
+        if db is not None:
+            try:
+                post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', target_filepath.name)
+                target_post_id = post_id_match.group(1) if post_id_match else None
+                if target_post_id:
+                    post_doc = db["profile_posts"].find_one({"post_id": target_post_id})
+                    if post_doc:
+                        # Buscar por timestamp de descoberta similar (mesmo carrossel de fotos)
+                        disc_at = post_doc.get("discovered_at")
+                        if disc_at:
+                            same_time_posts = list(db["profile_posts"].find({"discovered_at": disc_at, "post_type": "image"}))
+                            related_paths = []
+                            for p_doc in same_time_posts:
+                                for item in p_doc.get("media_items", []):
+                                    fname = item.get("filename")
+                                    if fname:
+                                        fpath = target_filepath.parent / fname
+                                        if fpath.exists() and fpath not in related_paths:
+                                            related_paths.append(fpath)
+                            if len(related_paths) > 1:
+                                return sorted(related_paths)
+            except Exception:
+                pass
+
+        return [target_filepath]
 
     def validate_seo_knowledge(self, knowledge: dict, has_transcription: bool, has_visual: bool) -> dict:
         """Valida qualidade do conhecimento extraído e atribui score."""
@@ -570,8 +735,11 @@ class KnowledgePipeline:
                 visual_summary = "\n---\n".join([d["description"] for d in frame_descriptions]) if frame_descriptions else "Sem telas visuais de conteúdo identificadas"
 
             else:
-                send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Analisando conteúdo da imagem única")
-                visual_summary = self.ocr_image(filepath)
+                send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Analisando conteúdo da imagem/carrossel")
+                carousel_paths = self.get_carousel_related_images(filepath)
+                if len(carousel_paths) > 1:
+                    console.print(f"  [bold cyan]🎠 Carrossel detectado com {len(carousel_paths)} slides![/bold cyan]")
+                visual_summary = self.ocr_image(filepath, carousel_paths=carousel_paths)
 
             send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via LLM")
             seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
