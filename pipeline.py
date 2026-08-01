@@ -668,6 +668,8 @@ class KnowledgePipeline:
             "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
             "Sua missão é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do conteúdo fornecido, "
             "capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n"
+            "IDIOMA OBRIGATÓRIO: Escreva TODAS as respostas EXCLUSIVAMENTE em Português do Brasil (pt-BR). "
+            "Nunca responda em espanhol, inglês ou qualquer outro idioma.\n\n"
             "REGRAS CRÍTICAS — SIGA RIGOROSAMENTE:\n"
             "1. EXTRAIA apenas informações PRESENTES no conteúdo. NUNCA invente dados.\n"
             "2. Se um campo não pode ser preenchido com dados reais, use \"Não identificado no conteúdo\".\n"
@@ -695,9 +697,29 @@ class KnowledgePipeline:
 
         res_str = self.query_ollama(self.text_model, prompt=context, system_prompt=system_prompt, json_format=True)
         try:
-            return json.loads(res_str)
+            data = json.loads(res_str)
         except Exception:
-            return {"raw_output": res_str}
+            data = {"raw_output": res_str}
+
+        # Pós-processamento de tradução: se detectar termos em espanhol comuns, força a tradução do JSON para pt-BR
+        espanhol_indicators = [" el ", " los ", " del ", " para mejorar ", " esta ", " con ", " como ", " paso ", " optimización ", " en "]
+        str_data = json.dumps(data, ensure_ascii=False).lower()
+        if any(ind in str_data for ind in espanhol_indicators):
+            translate_prompt = (
+                "Você é um tradutor especialista. Traduza o seguinte objeto JSON do espanhol para Português do Brasil (pt-BR).\n"
+                "Mantenha a estrutura JSON e todas as chaves intactas. Traduza apenas os valores de texto para um português natural do Brasil.\n\n"
+                f"Objeto JSON para traduzir:\n{json.dumps(data, ensure_ascii=False)}"
+            )
+            try:
+                translated_str = self.query_ollama(self.text_model, prompt=translate_prompt, system_prompt="Retorne apenas o JSON traduzido, sem explicações.", json_format=True)
+                translated_data = json.loads(translated_str)
+                # Garantir chaves principais
+                if "titulo_estrategia" in translated_data:
+                    data = translated_data
+            except Exception:
+                pass
+
+        return data
 
     def process_item(self, item: dict) -> bool:
         filepath: Path = item["path"]

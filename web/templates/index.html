@@ -86,6 +86,11 @@
           <span>Scraper</span>
         </button>
 
+        <button onclick="openPillarsModal()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
+          <i data-lucide="layers" class="w-4 h-4 text-cyan-400"></i>
+          <span>Pilares SEO</span>
+        </button>
+
         <button onclick="togglePostsSection()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
           <i data-lucide="list" class="w-4 h-4 text-purple-400"></i>
           <span>Posts Catalogados</span>
@@ -1632,6 +1637,233 @@
         c.value.toLowerCase().includes(q)
       ) : allConfigs;
       renderConfigGroups(filtered);
+    }
+  </script>
+
+  <!-- MODAL DE PILARES SEO (GERENCIAMENTO NO MONGODB) -->
+  <div id="pillars-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Pilares de SEO (MongoDB)</h2>
+            <p class="text-xs text-slate-400">Gerencie a taxonomia de pilares e palavras-chave usadas para agrupamento do Playbook</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openEditPillarModal()" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 transition">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Novo Pilar</span>
+          </button>
+          <button onclick="closePillarsModal()" class="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela de Pilares -->
+      <div class="flex-1 overflow-y-auto p-6">
+        <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950/80 text-slate-400 uppercase font-semibold border-b border-slate-800">
+              <tr>
+                <th class="px-4 py-3">Ordem</th>
+                <th class="px-4 py-3">ID / Chave</th>
+                <th class="px-4 py-3">Título do Pilar</th>
+                <th class="px-4 py-3">Palavras-Chave de Classificação</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="pillars-table-body" class="divide-y divide-slate-800/60 bg-slate-900/40">
+              <!-- Renderizado via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE CADASTRO/EDIÇÃO DE PILAR -->
+  <div id="pillar-edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="pillar-form-title" class="text-sm font-bold text-white">Cadastrar Novo Pilar SEO</h3>
+        <button onclick="closeEditPillarModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <form id="pillar-form" onsubmit="savePillar(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">ID Único / Chave (slug)</label>
+          <input type="text" id="pillar-id" required placeholder="ex: local_seo"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Título do Pilar</label>
+          <input type="text" id="pillar-titulo" required placeholder="ex: 7. SEO Local & Google Meu Negócio"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Palavras-Chave de Matching (separadas por vírgula)</label>
+          <textarea id="pillar-keywords" rows="3" required placeholder="local, google meu negócio, maps, avaliação, ficha"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Ordem de Exibição</label>
+            <input type="number" id="pillar-ordem" value="1" min="1"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Status</label>
+            <select id="pillar-ativo" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+              <option value="true">Ativo</option>
+              <option value="false">Inativo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+          <button type="button" onclick="closeEditPillarModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition">Salvar Pilar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let allPillars = [];
+
+    async function openPillarsModal() {
+      document.getElementById('pillars-modal').classList.remove('hidden');
+      await loadPillars();
+    }
+
+    function closePillarsModal() {
+      document.getElementById('pillars-modal').classList.add('hidden');
+    }
+
+    async function loadPillars() {
+      try {
+        const res = await fetch('/api/seo-pillars');
+        const data = await res.json();
+        allPillars = data.pillars || [];
+        renderPillarsTable(allPillars);
+      } catch (err) {
+        console.error('Erro ao carregar pilares:', err);
+      }
+    }
+
+    function renderPillarsTable(pillars) {
+      const tbody = document.getElementById('pillars-table-body');
+      tbody.innerHTML = '';
+
+      if (!pillars || pillars.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Nenhum pilar encontrado no MongoDB.</td></tr>`;
+        return;
+      }
+
+      pillars.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 transition';
+        const kwBadges = (p.keywords || []).slice(0, 5).map(k => `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 border border-slate-700">${escHtml(k)}</span>`).join(' ');
+        const kwMore = p.keywords.length > 5 ? `<span class="text-[10px] text-slate-500">+${p.keywords.length - 5}</span>` : '';
+
+        tr.innerHTML = `
+          <td class="px-4 py-3 font-semibold text-slate-400">${p.ordem || 1}</td>
+          <td class="px-4 py-3 font-mono text-[11px] text-cyan-400">${escHtml(p.id)}</td>
+          <td class="px-4 py-3 font-bold text-white">${escHtml(p.titulo)}</td>
+          <td class="px-4 py-3"><div class="flex flex-wrap gap-1">${kwBadges} ${kwMore}</div></td>
+          <td class="px-4 py-3">${p.ativo ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">Ativo</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-500 font-bold">Inativo</span>'}</td>
+          <td class="px-4 py-3 text-right space-x-2">
+            <button onclick="openEditPillarModal('${p.id}')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400" title="Editar"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+            <button onclick="deletePillar('${p.id}')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400" title="Excluir"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function openEditPillarModal(pillarId = null) {
+      const modal = document.getElementById('pillar-edit-modal');
+      const formTitle = document.getElementById('pillar-form-title');
+      modal.classList.remove('hidden');
+
+      if (pillarId) {
+        const p = allPillars.find(item => item.id === pillarId);
+        if (p) {
+          formTitle.innerText = 'Editar Pilar SEO';
+          document.getElementById('pillar-id').value = p.id;
+          document.getElementById('pillar-id').readOnly = true;
+          document.getElementById('pillar-titulo').value = p.titulo;
+          document.getElementById('pillar-keywords').value = (p.keywords || []).join(', ');
+          document.getElementById('pillar-ordem').value = p.ordem || 1;
+          document.getElementById('pillar-ativo').value = p.ativo ? 'true' : 'false';
+          return;
+        }
+      }
+
+      formTitle.innerText = 'Cadastrar Novo Pilar SEO';
+      document.getElementById('pillar-id').value = '';
+      document.getElementById('pillar-id').readOnly = false;
+      document.getElementById('pillar-titulo').value = '';
+      document.getElementById('pillar-keywords').value = '';
+      document.getElementById('pillar-ordem').value = allPillars.length + 1;
+      document.getElementById('pillar-ativo').value = 'true';
+    }
+
+    function closeEditPillarModal() {
+      document.getElementById('pillar-edit-modal').classList.add('hidden');
+    }
+
+    async function savePillar(e) {
+      e.preventDefault();
+      const id = document.getElementById('pillar-id').value.trim();
+      const titulo = document.getElementById('pillar-titulo').value.trim();
+      const kwRaw = document.getElementById('pillar-keywords').value;
+      const ordem = parseInt(document.getElementById('pillar-ordem').value) || 1;
+      const ativo = document.getElementById('pillar-ativo').value === 'true';
+
+      const keywords = kwRaw.split(',').map(k => k.trim()).filter(Boolean);
+
+      try {
+        const res = await fetch('/api/seo-pillars', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ id, titulo, keywords, ordem, ativo })
+        });
+
+        if (res.ok) {
+          closeEditPillarModal();
+          await loadPillars();
+        } else {
+          alert('Erro ao salvar pilar');
+        }
+      } catch (err) {
+        console.error('Erro ao salvar pilar:', err);
+      }
+    }
+
+    async function deletePillar(pillarId) {
+      if (!confirm(`Deseja realmente remover o pilar '${pillarId}'?`)) return;
+      try {
+        const res = await fetch(`/api/seo-pillars/${pillarId}`, { method: 'DELETE' });
+        if (res.ok) {
+          await loadPillars();
+        } else {
+          alert('Erro ao excluir pilar');
+        }
+      } catch (err) {
+        console.error('Erro ao excluir pilar:', err);
+      }
     }
   </script>
 

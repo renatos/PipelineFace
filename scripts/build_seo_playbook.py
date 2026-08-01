@@ -63,21 +63,20 @@ TAXONOMIA_PILARES_PADRAO = {
 
 
 def carregar_taxonomia_completa(db) -> dict:
-    """Carrega os 10 pilares padrão e mescla com pilares customizados configurados pelo usuário no MongoDB."""
-    taxonomia = dict(TAXONOMIA_PILARES_PADRAO)
+    """Carrega todos os pilares ativos cadastrados na coleção seo_pillars do MongoDB."""
+    taxonomia = {}
     try:
-        cfg = db["app_config"].find_one({"key": "custom_seo_pillars"})
-        if cfg and cfg.get("value"):
-            custom_pillars = json.loads(cfg["value"])
-            for item in custom_pillars:
-                p_id = item.get("id")
-                if p_id and item.get("keywords"):
-                    taxonomia[p_id] = {
-                        "titulo": item.get("titulo", p_id.capitalize()),
-                        "keywords": [k.lower() for k in item.get("keywords", [])]
-                    }
-    except Exception:
-        pass
+        docs = list(db["seo_pillars"].find({"ativo": True}).sort("ordem", 1))
+        for doc in docs:
+            taxonomia[doc["id"]] = {
+                "titulo": doc.get("titulo", doc["id"]),
+                "keywords": [k.lower() for k in doc.get("keywords", [])]
+            }
+    except Exception as e:
+        print(f"Aviso ao carregar seo_pillars: {e}")
+
+    if not taxonomia:
+        taxonomia = dict(TAXONOMIA_PILARES_PADRAO)
     return taxonomia
 
 

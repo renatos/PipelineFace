@@ -20,6 +20,17 @@ class AppConfig(BaseModel):
     updated_at: Optional[str] = None
 
 
+class SEOPillar(BaseModel):
+    """Pilar de SEO utilizado para agrupamento e consolidação do Playbook."""
+    id: str
+    titulo: str
+    keywords: List[str] = Field(default_factory=list)
+    ativo: bool = True
+    ordem: int = 1
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 class InputFile(BaseModel):
     filename: str
     type: str  # "video" | "image"

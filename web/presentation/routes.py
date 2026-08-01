@@ -4,7 +4,7 @@ Presentation Routes — PipelineFace (Clean Architecture)
 Controladores e rotas FastAPI desacoplados que convertem requisições HTTP em chamadas aos Casos de Uso.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
 from pydantic import BaseModel
@@ -27,9 +27,21 @@ from web.application.post_use_cases import (
     ListProfilePostsUseCase, GetSinglePostUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase,
     DeletePostUseCase, RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
 )
+from web.application.pillar_use_cases import (
+    ListSEOPillarsUseCase, SaveSEOPillarUseCase, DeleteSEOPillarUseCase
+)
+from web.domain.entities import SEOPillar
 
 
 router = APIRouter()
+
+
+class SEOPillarRequest(BaseModel):
+    id: str
+    titulo: str
+    keywords: List[str]
+    ordem: Optional[int] = 1
+    ativo: Optional[bool] = True
 
 
 class UpdateConfigRequest(BaseModel):
@@ -111,6 +123,9 @@ delete_post_use_case: DeletePostUseCase = None
 run_list_posts_use_case: RunListPostsUseCase = None
 run_download_pending_use_case: RunDownloadPendingUseCase = None
 run_download_single_post_use_case: RunDownloadSinglePostUseCase = None
+list_pillars_use_case: ListSEOPillarsUseCase = None
+save_pillar_use_case: SaveSEOPillarUseCase = None
+delete_pillar_use_case: DeleteSEOPillarUseCase = None
 media_service: MediaStreamingService = None
 
 
@@ -125,6 +140,7 @@ def init_routes(
     _list_posts_use_case, _get_single_post_use_case, _get_post_stats_use_case, _update_post_status_use_case,
     _delete_post_use_case,
     _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
+    _list_pillars_use_case, _save_pillar_use_case, _delete_pillar_use_case,
     _media_service
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
@@ -137,6 +153,7 @@ def init_routes(
     global list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case
     global delete_post_use_case
     global run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case
+    global list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case
     global media_service
 
     sync_use_case = _sync_use_case
@@ -167,6 +184,9 @@ def init_routes(
     run_list_posts_use_case = _run_list_posts_use_case
     run_download_pending_use_case = _run_download_pending_use_case
     run_download_single_post_use_case = _run_download_single_post_use_case
+    list_pillars_use_case = _list_pillars_use_case
+    save_pillar_use_case = _save_pillar_use_case
+    delete_pillar_use_case = _delete_pillar_use_case
     media_service = _media_service
 
 
@@ -276,6 +296,41 @@ def update_config(key: str, payload: UpdateConfigRequest):
     if not updated:
         raise HTTPException(status_code=404, detail=f"Configuração '{key}' não encontrada ou não é editável")
     return updated.model_dump()
+
+
+@router.get("/api/seo-pillars")
+def get_seo_pillars(apenas_ativos: bool = Query(False)):
+    """Lista todos os pilares de SEO cadastrados no MongoDB."""
+    if not list_pillars_use_case:
+        raise HTTPException(status_code=500, detail="Casos de uso de pilares não inicializados")
+    pillars = list_pillars_use_case.execute(apenas_ativos=apenas_ativos)
+    return {"count": len(pillars), "pillars": [p.model_dump() for p in pillars]}
+
+
+@router.post("/api/seo-pillars")
+def save_seo_pillar(payload: SEOPillarRequest):
+    """Cadastra ou atualiza um pilar de SEO no MongoDB."""
+    if not save_pillar_use_case:
+        raise HTTPException(status_code=500, detail="Casos de uso de pilares não inicializados")
+    pillar = save_pillar_use_case.execute(
+        pilar_id=payload.id,
+        titulo=payload.titulo,
+        keywords=payload.keywords,
+        ordem=payload.ordem or 1,
+        ativo=payload.ativo if payload.ativo is not None else True
+    )
+    return pillar.model_dump()
+
+
+@router.delete("/api/seo-pillars/{pillar_id}")
+def delete_seo_pillar(pillar_id: str):
+    """Remove um pilar de SEO do MongoDB."""
+    if not delete_pillar_use_case:
+        raise HTTPException(status_code=500, detail="Casos de uso de pilares não inicializados")
+    deleted = delete_pillar_use_case.execute(pillar_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Pilar {pillar_id} não encontrado")
+    return {"status": "success", "pillar_id": pillar_id}
 
 
 @router.get("/api/target-profiles")

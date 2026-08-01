@@ -13,11 +13,12 @@ from pymongo import MongoClient
 
 from web.domain.entities import (
     AppConfig, Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment,
-    ExecutionEvent, PipelineRun, TargetProfile, ProfilePost
+    ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar
 )
 from web.domain.repositories import (
     AbstractAppConfigRepository, AbstractStrategyRepository, AbstractExecutionEventRepository,
-    AbstractPipelineRunRepository, AbstractTargetProfileRepository, AbstractProfilePostRepository
+    AbstractPipelineRunRepository, AbstractTargetProfileRepository, AbstractProfilePostRepository,
+    AbstractSEOPillarRepository
 )
 
 
@@ -754,3 +755,72 @@ class MongoAppConfigRepository(AbstractAppConfigRepository):
     def as_dict(self) -> Dict[str, str]:
         """Retorna todos os parâmetros como dicionário key -> value (string bruto)."""
         return {doc["key"]: doc["value"] for doc in self.collection.find({}, {"_id": 0, "key": 1, "value": 1})}
+
+
+SEO_PILLARS_DEFAULTS = [
+    {"id": "keyword_research", "ordem": 1, "titulo": "1. Pesquisa de Palavras-Chave & Demanda",
+     "keywords": ["keyword", "palavra-chave", "palavra chave", "volume", "demanda", "search console", "semrush", "ahrefs", "ubersuggest", "keywords everywhere", "busca"]},
+    {"id": "onpage_seo", "ordem": 2, "titulo": "2. SEO On-Page & Estrutura HTML",
+     "keywords": ["h1", "meta title", "meta description", "url", "slug", "heading", "schema", "structured data", "on-page", "onpage", "tag", "html"]},
+    {"id": "technical_seo", "ordem": 3, "titulo": "3. SEO Técnico & Performance",
+     "keywords": ["core web vitals", "lcp", "pagespeed", "sitemap", "robots.txt", "indexação", "crawl", "ssl", "mobile", "velocidade", "ssr", "ssg"]},
+    {"id": "geo_rag", "ordem": 4, "titulo": "4. GEO — Otimização para IAs Generativas & RAG",
+     "keywords": ["geo", "perplexing", "perplexity", "chatgpt", "gemini", "rag", "llms.txt", "gptbot", "motor generativo", "ia", "resposta sintética"]},
+    {"id": "content_strategy", "ordem": 5, "titulo": "5. Estratégia de Conteúdo & Copywriting",
+     "keywords": ["conteúdo", "blog", "artigo", "copy", "título", "engajamento", "storytelling", "cta", "autoridade", "topico"]},
+    {"id": "link_building", "ordem": 6, "titulo": "6. Link Building & Autoridade",
+     "keywords": ["backlink", "link building", "autoridade", "domínio", "referência", "guest post", "dr", "da", "outbound", "inbound"]},
+    {"id": "local_seo", "ordem": 7, "titulo": "7. SEO Local & Google Meu Negócio",
+     "keywords": ["local", "google meu negócio", "maps", "avaliação", "ficha", "endereço", "proximidade", "cidade", "bairro"]},
+    {"id": "visual_media", "ordem": 8, "titulo": "8. Imagens, Vídeo & Mídia Visual",
+     "keywords": ["imagem", "vídeo", "video", "alt text", "thumbnail", "youtube", "infográfico", "canva", "pixlr", "resolução", "design"]},
+    {"id": "analytics", "ordem": 9, "titulo": "9. Analytics, Métricas & Conversão",
+     "keywords": ["google analytics", "ga4", "conversão", "bounce rate", "ctr", "taxa", "relatório", "métrica", "dados", "audiência"]},
+    {"id": "social_seo", "ordem": 10, "titulo": "10. SEO para Redes Sociais & Perfil",
+     "keywords": ["facebook", "instagram", "linkedin", "rede social", "post", "engajamento social", "perfil", "publicação"]}
+]
+
+
+class MongoSEOPillarRepository(AbstractSEOPillarRepository):
+    def __init__(self, mongo_uri: str = "mongodb://localhost:27017", db_name: str = "pipelineface", collection_name: str = "seo_pillars"):
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+        self.collection.create_index("id", unique=True, sparse=True)
+        self.seed_defaults()
+
+    def seed_defaults(self) -> None:
+        now = datetime.now().isoformat()
+        for p in SEO_PILLARS_DEFAULTS:
+            self.collection.update_one(
+                {"id": p["id"]},
+                {"$setOnInsert": {**p, "ativo": True, "created_at": now, "updated_at": now}},
+                upsert=True
+            )
+
+    def list_all(self, apenas_ativos: bool = False) -> List[SEOPillar]:
+        query = {"ativo": True} if apenas_ativos else {}
+        docs = list(self.collection.find(query, {"_id": 0}).sort("ordem", 1))
+        return [SEOPillar(**d) for d in docs]
+
+    def get_by_id(self, pilar_id: str) -> Optional[SEOPillar]:
+        doc = self.collection.find_one({"id": pilar_id}, {"_id": 0})
+        return SEOPillar(**doc) if doc else None
+
+    def save_or_update(self, pilar: SEOPillar) -> SEOPillar:
+        now = datetime.now().isoformat()
+        doc = pilar.model_dump()
+        doc["updated_at"] = now
+        if not doc.get("created_at"):
+            doc["created_at"] = now
+
+        self.collection.update_one(
+            {"id": pilar.id},
+            {"$set": doc},
+            upsert=True
+        )
+        return pilar
+
+    def delete(self, pilar_id: str) -> bool:
+        res = self.collection.delete_one({"id": pilar_id})
+        return res.deleted_count > 0

@@ -6,7 +6,9 @@ Contrato abstrato de persistência para as estratégias, eventos e histórico de
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
-from web.domain.entities import AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile, ProfilePost
+from web.domain.entities import (
+    AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar
+)
 
 
 class AbstractAppConfigRepository(ABC):
@@ -145,5 +147,27 @@ class AbstractProfilePostRepository(ABC):
     @abstractmethod
     def get_stats(self, profile_url: Optional[str] = None) -> Dict[str, int]:
         """Retorna estatísticas dos posts (total, pending, downloading, downloaded, processed, error)."""
+        pass
+
+
+class AbstractSEOPillarRepository(ABC):
+    @abstractmethod
+    def seed_defaults(self) -> None:
+        pass
+
+    @abstractmethod
+    def list_all(self, apenas_ativos: bool = False) -> List[SEOPillar]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, pilar_id: str) -> Optional[SEOPillar]:
+        pass
+
+    @abstractmethod
+    def save_or_update(self, pilar: SEOPillar) -> SEOPillar:
+        pass
+
+    @abstractmethod
+    def delete(self, pilar_id: str) -> bool:
         pass
 

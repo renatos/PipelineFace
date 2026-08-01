@@ -13,7 +13,8 @@ from fastapi.templating import Jinja2Templates
 # Imports das Camadas da Arquitetura Limpa
 from web.infrastructure.mongo_repository import (
     MongoAppConfigRepository, MongoStrategyRepository, MongoExecutionEventRepository,
-    MongoPipelineRunRepository, MongoTargetProfileRepository, MongoProfilePostRepository
+    MongoPipelineRunRepository, MongoTargetProfileRepository, MongoProfilePostRepository,
+    MongoSEOPillarRepository
 )
 from web.infrastructure.media_service import MediaStreamingService
 from web.infrastructure.process_runner import AsyncProcessRunner
@@ -34,6 +35,9 @@ from web.application.process_use_case import (
 from web.application.post_use_cases import (
     ListProfilePostsUseCase, GetSinglePostUseCase, GetPostStatsUseCase, UpdatePostStatusUseCase,
     DeletePostUseCase, RunListPostsUseCase, RunDownloadPendingUseCase, RunDownloadSinglePostUseCase
+)
+from web.application.pillar_use_cases import (
+    ListSEOPillarsUseCase, SaveSEOPillarUseCase, DeleteSEOPillarUseCase
 )
 
 from web.presentation.routes import router as api_router, init_routes
@@ -70,6 +74,7 @@ def create_app() -> FastAPI:
     run_repo = MongoPipelineRunRepository(mongo_uri=MONGO_URI)
     profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
     post_repo = MongoProfilePostRepository(mongo_uri=MONGO_URI)
+    pillar_repo = MongoSEOPillarRepository(mongo_uri=MONGO_URI)
     media_service = MediaStreamingService(INPUT_VIDEOS_DIR, INPUT_IMAGES_DIR, OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
@@ -77,6 +82,10 @@ def create_app() -> FastAPI:
     get_all_configs_use_case = GetAllConfigsUseCase(config_repo)
     get_config_use_case = GetConfigUseCase(config_repo)
     update_config_use_case = UpdateConfigUseCase(config_repo)
+
+    list_pillars_use_case = ListSEOPillarsUseCase(pillar_repo)
+    save_pillar_use_case = SaveSEOPillarUseCase(pillar_repo)
+    delete_pillar_use_case = DeleteSEOPillarUseCase(pillar_repo)
 
     sync_use_case = SyncKnowledgeUseCase(
         repository=mongo_repo,
@@ -133,6 +142,7 @@ def create_app() -> FastAPI:
         list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case,
         delete_post_use_case,
         run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case,
+        list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case,
         media_service
     )
 
