@@ -18,7 +18,7 @@ from typing import List, Dict, Any
 from pymongo import MongoClient
 
 
-TAXONOMIA_PILARES = {
+TAXONOMIA_PILARES_PADRAO = {
     "keyword_research": {
         "titulo": "1. Pesquisa de Palavras-Chave & Demanda",
         "keywords": ["keyword", "palavra-chave", "palavra chave", "volume", "demanda", "search console", "semrush", "ahrefs", "ubersuggest", "keywords everywhere", "busca"]
@@ -39,19 +39,46 @@ TAXONOMIA_PILARES = {
         "titulo": "5. Estratégia de Conteúdo & Copywriting",
         "keywords": ["conteúdo", "blog", "artigo", "copy", "título", "engajamento", "storytelling", "cta", "autoridade", "topico"]
     },
+    "link_building": {
+        "titulo": "6. Link Building & Autoridade",
+        "keywords": ["backlink", "link building", "autoridade", "domínio", "referência", "guest post", "dr", "da", "outbound", "inbound"]
+    },
+    "local_seo": {
+        "titulo": "7. SEO Local & Google Meu Negócio",
+        "keywords": ["local", "google meu negócio", "maps", "avaliação", "ficha", "endereço", "proximidade", "cidade", "bairro"]
+    },
     "visual_media": {
-        "titulo": "6. Imagens, Vídeo & Mídia Visual",
+        "titulo": "8. Imagens, Vídeo & Mídia Visual",
         "keywords": ["imagem", "vídeo", "video", "alt text", "thumbnail", "youtube", "infográfico", "canva", "pixlr", "resolução", "design"]
     },
     "analytics": {
-        "titulo": "7. Analytics, Métricas & Conversão",
+        "titulo": "9. Analytics, Métricas & Conversão",
         "keywords": ["google analytics", "ga4", "conversão", "bounce rate", "ctr", "taxa", "relatório", "métrica", "dados", "audiência"]
     },
     "social_seo": {
-        "titulo": "8. SEO para Redes Sociais & Perfil",
+        "titulo": "10. SEO para Redes Sociais & Perfil",
         "keywords": ["facebook", "instagram", "linkedin", "rede social", "post", "engajamento social", "perfil", "publicação"]
     }
 }
+
+
+def carregar_taxonomia_completa(db) -> dict:
+    """Carrega os 10 pilares padrão e mescla com pilares customizados configurados pelo usuário no MongoDB."""
+    taxonomia = dict(TAXONOMIA_PILARES_PADRAO)
+    try:
+        cfg = db["app_config"].find_one({"key": "custom_seo_pillars"})
+        if cfg and cfg.get("value"):
+            custom_pillars = json.loads(cfg["value"])
+            for item in custom_pillars:
+                p_id = item.get("id")
+                if p_id and item.get("keywords"):
+                    taxonomia[p_id] = {
+                        "titulo": item.get("titulo", p_id.capitalize()),
+                        "keywords": [k.lower() for k in item.get("keywords", [])]
+                    }
+    except Exception:
+        pass
+    return taxonomia
 
 
 def query_ollama(prompt: str, system_prompt: str = None) -> str:
@@ -137,7 +164,9 @@ def build_playbook():
 
     print(f"⚡ [MAP] Agrupando {len(strategies)} documentos por pilares estratégicos (Sem LLM)...")
 
-    agrupamento: Dict[str, List[Dict[str, Any]]] = {pilar_id: [] for pilar_id in TAXONOMIA_PILARES}
+    taxonomia_pilares = carregar_taxonomia_completa(db)
+
+    agrupamento: Dict[str, List[Dict[str, Any]]] = {pilar_id: [] for pilar_id in taxonomia_pilares}
     agrupamento["outros"] = []
 
     for doc in strategies:
@@ -149,7 +178,7 @@ def build_playbook():
         texto_completo = f"{titulo} {resumo} {conceitos} {ferramentas}".lower()
 
         pilar_encontrado = None
-        for pilar_id, meta in TAXONOMIA_PILARES.items():
+        for pilar_id, meta in taxonomia_pilares.items():
             if any(kw in texto_completo for kw in meta["keywords"]):
                 pilar_encontrado = pilar_id
                 break
@@ -165,7 +194,7 @@ def build_playbook():
 
     summary_payload = []
     for pilar_id, docs in pilares_ativos.items():
-        pilar_nome = TAXONOMIA_PILARES.get(pilar_id, {}).get("titulo", "Outras Estratégias de SEO")
+        pilar_nome = taxonomia_pilares.get(pilar_id, {}).get("titulo", "Outras Estratégias de SEO")
         titulos = [d.get("seo_knowledge", {}).get("titulo_estrategia") for d in docs]
         ferramentas_set = set()
         for d in docs:
@@ -212,7 +241,7 @@ def build_playbook():
     topicos_priorizados = []
 
     for pilar_id, docs in pilares_ativos.items():
-        pilar_info = TAXONOMIA_PILARES.get(pilar_id, {})
+        pilar_info = taxonomia_pilares.get(pilar_id, {})
         nome_pilar = pilar_info.get("titulo", "Outras Estratégias de SEO")
         
         meta = pilares_meta.get(pilar_id, {})
