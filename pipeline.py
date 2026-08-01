@@ -390,83 +390,105 @@ class KnowledgePipeline:
         console.print(f"[red]❌ Erro na requisição ao Ollama ({model}): {last_error}[/red]")
         raise RuntimeError(f"Ollama API ({model}) falhou após {max_retries} tentativas: {last_error}")
 
-    def is_presenter_face(self, image_path: Path) -> bool:
-        """Detecta de forma determinística com OpenCV se o frame é um rosto de apresentador em primeiro plano."""
+    def correct_transcription(self, raw_transcription: str, filename: str) -> str:
+        """Pós-corrige erros de transcrição Whisper em conteúdo de SEO."""
+        if not raw_transcription or raw_transcription.startswith("["):
+            return raw_transcription
+
+        system = (
+            "Você é um corretor de transcrições de vídeos de SEO/Marketing Digital em português brasileiro.\n"
+            "Corrija APENAS erros óbvios de transcrição automática, mantendo fidelidade ao original:\n"
+            "- Nomes de ferramentas de SEO (ex: 'Bessojeste' → 'Keywords Everywhere', 'Semrash' → 'Semrush', 'Arefs' → 'Ahrefs')\n"
+            "- Termos técnicos (H1, meta title, URL, bounce rate, CTR, SERP, backlink, etc.)\n"
+            "- Nomes de plataformas (Google, YouTube, Facebook, Instagram, etc.)\n"
+            "- Siglas e acrônimos comuns de marketing (SEO, SEM, CPC, ROI, KPI, etc.)\n"
+            "NÃO altere o conteúdo semântico. NÃO adicione informação nova.\n"
+            "Retorne APENAS a transcrição corrigida, sem comentários."
+        )
         try:
-            import cv2
-            img = cv2.imread(str(image_path))
-            if img is None: return False
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(90, 90))
-            
-            img_area = img.shape[0] * img.shape[1]
-            for (x, y, w, h) in faces:
-                face_area = w * h
-                # Se o rosto ocupa mais de 10% do frame, é uma pessoa/apresentador (talking head)!
-                if (face_area / img_area) > 0.10:
-                    return True
-            return False
+            corrected = self.query_ollama(self.text_model, raw_transcription, system_prompt=system)
+            return corrected if corrected else raw_transcription
         except Exception:
-            return False
+            return raw_transcription
 
-    def analyze_and_filter_frames(self, frame_paths: list[Path], target_frames_dir: Path) -> tuple[list[dict], list[str]]:
-        descriptions = []
-        saved_frame_paths = []
+    def ocr_image(self, image_path: Path) -> str:
+        """OCR dedicado com Tesseract + fallback Moondream (rejeitando coordenadas de bounding box)."""
+        texts = []
 
-        if not frame_paths:
-            return descriptions, saved_frame_paths
+        try:
+            import pytesseract
+            from PIL import Image
+            img = Image.open(image_path)
+            text = pytesseract.image_to_string(img, lang='por+eng')
+            if text and len(text.strip()) > 15:
+                texts.append(f"[OCR Tesseract]:\n{text.strip()}")
+        except Exception as e:
+            pass
 
-        max_ocr_frames = 3
-        if len(frame_paths) <= max_ocr_frames:
-            selected_ocr_frames = set(frame_paths)
+        prompt_ocr = (
+            "Read and transcribe ALL text visible in this image. "
+            "Output ONLY the transcribed text in portuguese. Do not output coordinates or numbers in brackets."
+        )
+        vision_text = self.query_ollama(self.vision_model, prompt_ocr, image_path=image_path)
+        
+        # Filtrar se o modelo retornou apenas coordenadas de caixas como [0.12, 0.13, ...]
+        if vision_text and not re.search(r'^\s*\[\s*\d+\.\d+,\s*\d+\.\d+', vision_text):
+            texts.append(f"[OCR Visão]:\n{vision_text}")
+
+        return "\n\n".join(texts) if texts else ""
+
+    def validate_seo_knowledge(self, knowledge: dict, has_transcription: bool, has_visual: bool) -> dict:
+        """Valida qualidade do conhecimento extraído e atribui score."""
+        issues = []
+        score = 100
+
+        if "raw_output" in knowledge:
+            issues.append("LLM não retornou JSON válido")
+            score -= 50
+
+        steps = knowledge.get("passo_a_passo_detalhado", [])
+        if len(steps) == 0:
+            issues.append("Nenhum passo extraído")
+            score -= 30
         else:
-            step = len(frame_paths) // max_ocr_frames
-            selected_ocr_frames = set(frame_paths[i * step] for i in range(max_ocr_frames))
+            for i, step in enumerate(steps):
+                if len(step) < 30:
+                    issues.append(f"Passo {i+1} muito curto ({len(step)} chars)")
+                    score -= 5
 
-        for frame_path in frame_paths:
-            frame_filename = frame_path.name
+        # Se não há transcrição nem texto visual lido, o resultado é invenção/alucinação!
+        if not has_transcription and not has_visual:
+            issues.append("Sem fonte real de dados: OCR/Visão e Áudio falharam — conhecimento alucinado pelo LLM")
+            score = 0
 
-            # 1. Checagem determinística OpenCV (ignora rostos de apresentadores)
-            if self.is_presenter_face(frame_path):
-                console.print(f"  [yellow]🙈 Frame ignorado (rosto de apresentador detectado via OpenCV): {frame_filename}[/yellow]")
-                continue
+        placeholder_patterns = [
+            "palavras-chave usadas", "ex: Long-tail", "ex: Google Trends",
+            "ex: Gemini", "título objetivo", "resumo em 2 frases"
+        ]
+        for field_name in ["termos_e_exemplos_usados", "conceitos_mencionados", "ferramentas_e_telas_utilizadas"]:
+            values = knowledge.get(field_name, [])
+            for v in (values if isinstance(values, list) else [values]):
+                v_lower = str(v).lower()
+                for p in placeholder_patterns:
+                    if p.lower() in v_lower:
+                        issues.append(f"Placeholder em '{field_name}': '{v}'")
+                        score -= 15
 
-            # 2. Checagem semântica Moondream (garante que contém tela/slide/sistema/texto)
-            prompt_classify = (
-                "Describe this image in detail. Is it showing a computer screen, laptop screen, monitor, smartphone screen, website, slide, graph, or text on screen?"
-            )
-            desc_classify = self.query_ollama(self.vision_model, prompt_classify, image_path=frame_path).lower()
-            
-            keywords = [
-                "screen", "display", "laptop", "computer", "website", "webpage", "slide",
-                "graph", "google", "search", "text", "page", "table", "code", "menu", "list",
-                "monitor", "phone", "mobile", "hand", "finger", "pointing", "device",
-                "tela", "grafico", "busca", "sistema", "site", "navegador", "pagina", "mao", "dedo"
-            ]
-            is_screen = any(kw in desc_classify for kw in keywords)
-            if not is_screen:
-                console.print(f"  [yellow]🙈 Frame ignorado (sem tela ou gráfico de conteúdo): {frame_filename}[/yellow]")
-                continue
+        titulo = knowledge.get("titulo_estrategia", "")
+        generic_titles = ["otimização de seo", "melhorar seo", "estratégia de seo", "seo para melhorar", "como criar e otimizar posts"]
+        if any(g in titulo.lower() for g in generic_titles):
+            issues.append(f"Título genérico: '{titulo}'")
+            score -= 15
 
-            target_frames_dir.mkdir(parents=True, exist_ok=True)
-            dest = target_frames_dir / frame_filename
-            shutil.copy2(frame_path, dest)
-            saved_frame_paths.append(str(dest))
-
-            if frame_path in selected_ocr_frames:
-                prompt_ocr = (
-                    "Transcreva todo o texto visível nesta imagem. "
-                    "Identifique gráficos de SEO, buscas do Google ou telas de sistemas. Responda em português."
-                )
-                desc = self.query_ollama("moondream", prompt_ocr, image_path=frame_path)
-                descriptions.append({
-                    "frame": frame_filename,
-                    "description": desc
-                })
-
-        return descriptions, saved_frame_paths
+        knowledge["quality_score"] = max(0, score)
+        knowledge["quality_issues"] = issues
+        knowledge["quality_grade"] = (
+            "A" if score >= 80 else
+            "B" if score >= 60 else
+            "C" if score >= 40 else
+            "D"
+        )
+        return knowledge
 
     def extract_seo_knowledge(self, filename: str, is_video: bool, transcription: str = None, visual_summary: str = None) -> dict:
         if is_video:
@@ -479,21 +501,34 @@ class KnowledgePipeline:
 
         system_prompt = (
             "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
-            "Sua missão principal é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do vídeo/post fornecido, "
-            'capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n'
+            "Sua missão é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do conteúdo fornecido, "
+            "capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n"
+            "REGRAS CRÍTICAS — SIGA RIGOROSAMENTE:\n"
+            "1. EXTRAIA apenas informações PRESENTES no conteúdo. NUNCA invente dados.\n"
+            "2. Se um campo não pode ser preenchido com dados reais, use \"Não identificado no conteúdo\".\n"
+            "3. Cada passo DEVE conter uma AÇÃO CONCRETA (ex: 'Acesse google.com e digite...', 'Clique no menu...').\n"
+            "4. Os termos em 'termos_e_exemplos_usados' devem ser LITERALMENTE do conteúdo.\n"
+            "5. Se a transcrição contiver erros prováveis, interprete pelo contexto.\n"
+            "6. Inclua URLs e nomes EXATOS de ferramentas quando mencionados.\n"
+            "7. O campo 'nivel_dificuldade' deve ser: 'iniciante', 'intermediario' ou 'avancado'.\n"
+            "8. O campo 'tempo_estimado_implementacao' deve ser realista (ex: '15 minutos', '1 hora').\n\n"
             "RETORNE APENAS um JSON válido:\n"
             "{\n"
-            '  "titulo_estrategia": "título objetivo da estratégia",\n'
-            '  "resumo_executivo": "resumo em 2 frases",\n'
-            '  "passo_a_passo_detalhado": ["Passo 1: ...", "Passo 2: ..."],\n'
-            '  "ferramentas_e_telas_utilizadas": ["ex: Google Trends, Gemini"],\n'
-            '  "termos_e_exemplos_usados": ["palavras-chave usadas"],\n'
-            '  "aplicacao_no_negocio": "como aplicar para vender mais",\n'
-            '  "conceitos_mencionados": ["ex: Long-tail"]\n'
+            '  "titulo_estrategia": "título objetivo e descritivo da estratégia/dica",\n'
+            '  "resumo_executivo": "resumo em 2-3 frases do que o conteúdo ensina",\n'
+            '  "passo_a_passo_detalhado": ["Passo 1: Ação concreta...", "Passo 2: ..."],\n'
+            '  "ferramentas_e_telas_utilizadas": ["Nome exato da ferramenta mencionada"],\n'
+            '  "termos_e_exemplos_usados": ["termo literal extraído do conteúdo"],\n'
+            '  "aplicacao_no_negocio": "como aplicar esta dica para gerar resultados concretos",\n'
+            '  "conceitos_mencionados": ["conceito de SEO/marketing mencionado"],\n'
+            '  "nivel_dificuldade": "iniciante|intermediario|avancado",\n'
+            '  "tempo_estimado_implementacao": "estimativa de tempo para implementar",\n'
+            '  "pre_requisitos": ["o que o usuário precisa ter/saber antes de começar"],\n'
+            '  "resultado_esperado": "o que o usuário obterá ao implementar esta dica"\n'
             "}"
         )
 
-        res_str = self.query_ollama("qwen2.5:3b", prompt=context, system_prompt=system_prompt, json_format=True)
+        res_str = self.query_ollama(self.text_model, prompt=context, system_prompt=system_prompt, json_format=True)
         try:
             return json.loads(res_str)
         except Exception:
@@ -510,6 +545,7 @@ class KnowledgePipeline:
 
         try:
             transcription = None
+            transcription_raw = None
             visual_summary = ""
             frame_descriptions = []
             saved_frame_paths = []
@@ -521,7 +557,10 @@ class KnowledgePipeline:
                 duration_seconds = ext_res["duration_seconds"]
 
                 send_telemetry_event(self.run_id, "WHISPER_TRANSCRIBE", status="in_progress", filename=filename, message="Transcrevendo fala via Whisper")
-                transcription = self.transcribe_audio_whisper(ext_res["audio_path"], basename)
+                transcription_raw = self.transcribe_audio_whisper(ext_res["audio_path"], basename)
+
+                send_telemetry_event(self.run_id, "CORRECT_TRANSCRIPTION", status="in_progress", filename=filename, message="Corrigindo erros de transcrição via LLM")
+                transcription = self.correct_transcription(transcription_raw, filename)
 
                 send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Classificando frames e filtrando rosto de apresentadores")
                 target_video_frames_dir = self.output_frames_dir / basename
@@ -532,16 +571,22 @@ class KnowledgePipeline:
 
             else:
                 send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Analisando conteúdo da imagem única")
-                prompt_img = (
-                    "Transcreva EXATAMENTE todo o texto visível nesta imagem. "
-                    "Identifique conceitos de SEO, dicas de busca do Google, palavras-chave e conselhos mostrados na imagem. Responda em português."
-                )
-                visual_summary = self.query_ollama("moondream", prompt_img, image_path=filepath)
+                visual_summary = self.ocr_image(filepath)
 
-            send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via Qwen2.5:3b")
+            send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via LLM")
             seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
+            
+            seo_knowledge = self.validate_seo_knowledge(
+                seo_knowledge,
+                has_transcription=bool(transcription and not transcription.startswith("[")),
+                has_visual=bool(visual_summary and visual_summary != "Sem telas visuais de conteúdo identificadas" and "Nenhum texto identificado" not in visual_summary)
+            )
+            quality = seo_knowledge.get("quality_grade", "?")
+            score = seo_knowledge.get("quality_score", 0)
+            console.print(f"  [bold]📊 Qualidade: Grade {quality} (Score: {score}/100)[/bold]")
 
             original_url = self.get_original_url(filename, basename)
+            post_meta = self.get_post_metadata(filename, basename)
 
             saved_frames = [
                 {
@@ -555,8 +600,11 @@ class KnowledgePipeline:
                 "basename": basename,
                 "metadata": {
                     "source": "facebook_profile_seo",
-                    "pipeline_version": "3.0.0 (Python Nativo)",
-                    "processed_at": datetime.now().isoformat()
+                    "pipeline_version": "3.1.0 (Python Nativo com OCR e Correção)",
+                    "processed_at": datetime.now().isoformat(),
+                    "author": post_meta.get("author"),
+                    "author_url": post_meta.get("author_url"),
+                    "post_text_preview": post_meta.get("post_text_preview")
                 },
                 "source_file": {
                     "filename": filename,
@@ -577,6 +625,7 @@ class KnowledgePipeline:
                 },
                 "content": {
                     "transcription": transcription,
+                    "transcription_raw": transcription_raw,
                     "visual_description": visual_summary,
                     "frame_descriptions": frame_descriptions if filetype == "video" else None,
                     "saved_frame_files": saved_frame_paths,

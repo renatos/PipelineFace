@@ -1,8 +1,10 @@
 FROM python:3.11-slim
 
 # Instalar pacotes de sistema necessários (FFmpeg, bibliotecas gráficas, curl)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
+    tesseract-ocr \
+    tesseract-ocr-por \
     libsm6 \
     libxext6 \
     curl \

@@ -37,6 +37,7 @@ class SavedFrame(BaseModel):
 
 class Content(BaseModel):
     transcription: Optional[str] = None
+    transcription_raw: Optional[str] = None
     visual_description: Optional[str] = None
     saved_frames: List[SavedFrame] = Field(default_factory=list)
 
@@ -49,6 +50,13 @@ class SEOKnowledge(BaseModel):
     termos_e_exemplos_usados: List[str] = Field(default_factory=list)
     aplicacao_no_negocio: Optional[str] = None
     conceitos_mencionados: List[str] = Field(default_factory=list)
+    nivel_dificuldade: Optional[str] = None
+    tempo_estimado_implementacao: Optional[str] = None
+    pre_requisitos: List[str] = Field(default_factory=list)
+    resultado_esperado: Optional[str] = None
+    quality_score: Optional[int] = None
+    quality_grade: Optional[str] = None
+    quality_issues: List[str] = Field(default_factory=list)
 
 
 class Comment(BaseModel):
