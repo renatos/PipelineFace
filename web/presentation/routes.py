@@ -333,6 +333,20 @@ def delete_seo_pillar(pillar_id: str):
     return {"status": "success", "pillar_id": pillar_id}
 
 
+@router.get("/api/seo-playbook")
+def get_seo_playbook():
+    """Retorna o documento do Playbook SEO Consolidado gerado no MongoDB."""
+    from pymongo import MongoClient
+    import os
+    mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+    db = client["pipelineface"]
+    pb = db["seo_playbook"].find_one({"id": "playbook_principal"}, {"_id": 0})
+    if not pb:
+        raise HTTPException(status_code=404, detail="Playbook ainda não foi gerado.")
+    return pb
+
+
 @router.get("/api/target-profiles")
 def get_target_profiles(limit: int = Query(20)):
     """Lista os perfis alvo salvos no MongoDB."""
