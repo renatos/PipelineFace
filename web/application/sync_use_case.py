@@ -114,4 +114,13 @@ class SyncKnowledgeUseCase:
             except Exception as e:
                 print(f"Erro no SyncKnowledgeUseCase para {json_file}: {e}")
 
+        # Se importou estratégias novas de alta qualidade, dispara a consolidação do playbook em segundo plano
+        if imported_count > 0:
+            try:
+                import subprocess
+                subprocess.Popen(["python3", "scripts/build_seo_playbook.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print("⚙️  Playbook consolidado disparado automaticamente em segundo plano!")
+            except Exception as e:
+                print(f"Erro ao disparar build_seo_playbook: {e}")
+
         return {"imported": imported_count, "total": len(json_files)}
