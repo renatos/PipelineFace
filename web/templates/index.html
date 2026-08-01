@@ -1676,8 +1676,9 @@
       </div>
     </div>
   </div>
+  <!-- MODAL DE PILARES SEO (GERENCIAMENTO NO MONGODB) -->
   <div id="pillars-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
       <!-- Modal Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
         <div class="flex items-center gap-3">
@@ -1689,8 +1690,8 @@
             <p class="text-xs text-slate-400">Gerencie a taxonomia de pilares e palavras-chave usadas para agrupamento do Playbook</p>
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <button onclick="openEditPillarModal()" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 transition">
+        <div class="flex items-center gap-3">
+          <button onclick="openEditPillarModal()" class="px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>Novo Pilar</span>
           </button>
@@ -1706,12 +1707,12 @@
           <table class="w-full text-left text-xs text-slate-300">
             <thead class="bg-slate-950/80 text-slate-400 uppercase font-semibold border-b border-slate-800">
               <tr>
-                <th class="px-4 py-3">Ordem</th>
-                <th class="px-4 py-3">ID / Chave</th>
-                <th class="px-4 py-3">Título do Pilar</th>
-                <th class="px-4 py-3">Palavras-Chave de Classificação</th>
-                <th class="px-4 py-3">Status</th>
-                <th class="px-4 py-3 text-right">Ações</th>
+                <th class="px-4 py-3.5 w-16 text-center">Ordem</th>
+                <th class="px-4 py-3.5 w-36">ID / Chave</th>
+                <th class="px-4 py-3.5 w-64">Título do Pilar</th>
+                <th class="px-4 py-3.5">Palavras-Chave de Classificação</th>
+                <th class="px-4 py-3.5 w-24 text-center whitespace-nowrap">Status</th>
+                <th class="px-6 py-3.5 w-28 text-center whitespace-nowrap">Ações</th>
               </tr>
             </thead>
             <tbody id="pillars-table-body" class="divide-y divide-slate-800/60 bg-slate-900/40">
@@ -1909,14 +1910,14 @@
         const kwMore = p.keywords.length > 5 ? `<span class="text-[10px] text-slate-500">+${p.keywords.length - 5}</span>` : '';
 
         tr.innerHTML = `
-          <td class="px-4 py-3 font-semibold text-slate-400">${p.ordem || 1}</td>
-          <td class="px-4 py-3 font-mono text-[11px] text-cyan-400">${escHtml(p.id)}</td>
+          <td class="px-4 py-3 text-center font-semibold text-slate-400">${p.ordem || 1}</td>
+          <td class="px-4 py-3 font-mono text-[11px] text-cyan-400 font-semibold">${escHtml(p.id)}</td>
           <td class="px-4 py-3 font-bold text-white">${escHtml(p.titulo)}</td>
           <td class="px-4 py-3"><div class="flex flex-wrap gap-1">${kwBadges} ${kwMore}</div></td>
-          <td class="px-4 py-3">${p.ativo ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">Ativo</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-500 font-bold">Inativo</span>'}</td>
-          <td class="px-4 py-3 text-right space-x-2">
-            <button onclick="openEditPillarModal('${p.id}')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400" title="Editar"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-            <button onclick="deletePillar('${p.id}')" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400" title="Excluir"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          <td class="px-4 py-3 text-center whitespace-nowrap">${p.ativo ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">Ativo</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-500 font-bold">Inativo</span>'}</td>
+          <td class="px-6 py-3 text-center whitespace-nowrap space-x-1.5">
+            <button onclick="openEditPillarModal('${p.id}')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 transition" title="Editar"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+            <button onclick="deletePillar('${p.id}')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 transition" title="Excluir"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           </td>
         `;
         tbody.appendChild(tr);
