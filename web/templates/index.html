@@ -545,6 +545,14 @@
           <span class="font-semibold">ℹ️ Step 1 (Listar/Catalogar):</span> O navegador irá percorrer o perfil-alvo para identificar e salvar todos os posts no MongoDB com status <span class="font-semibold text-amber-400">pendente</span>, sem realizar o download de mídias neste momento.
         </div>
 
+        <!-- Campo Apenas Posts Novos (Step 1) -->
+        <div id="field-only-new" class="hidden">
+          <label class="flex items-center gap-2 text-xs font-medium text-slate-300 cursor-pointer bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+            <input type="checkbox" id="scraper-only-new" class="w-4 h-4 text-purple-600 bg-slate-900 border-slate-700 rounded focus:ring-purple-500" checked>
+            <span>✨ Catalogar apenas posts novos (posteriores ao último post no banco)</span>
+          </label>
+        </div>
+
         <!-- Campo Dinâmico: Scrolls (Apenas em Coleta Completa) -->
         <div id="field-max-scrolls" class="hidden">
           <label class="block text-xs font-medium text-slate-400 mb-1">Limite de Scrolls (Máx)</label>
@@ -1291,6 +1299,7 @@
     function onScraperModeChange() {
       const mode = document.getElementById('scraper-action-mode').value;
       const infoStep1 = document.getElementById('info-step-1');
+      const fieldOnlyNew = document.getElementById('field-only-new');
       const fieldScrolls = document.getElementById('field-max-scrolls');
       const fieldBatch = document.getElementById('field-batch-size');
       const fieldFilters = document.getElementById('field-media-filters');
@@ -1298,18 +1307,21 @@
 
       if (mode === 'list_posts') {
         if (infoStep1) infoStep1.classList.remove('hidden');
+        if (fieldOnlyNew) fieldOnlyNew.classList.remove('hidden');
         fieldScrolls.classList.add('hidden');
         fieldBatch.classList.add('hidden');
         fieldFilters.classList.add('hidden');
         btnSubmit.innerText = '🔍 Iniciar Listagem de Posts';
       } else if (mode === 'download_pending') {
         if (infoStep1) infoStep1.classList.add('hidden');
+        if (fieldOnlyNew) fieldOnlyNew.classList.add('hidden');
         fieldScrolls.classList.add('hidden');
         fieldBatch.classList.remove('hidden');
         fieldFilters.classList.add('hidden');
         btnSubmit.innerText = '⬇️ Iniciar Download em Lote';
       } else {
         if (infoStep1) infoStep1.classList.add('hidden');
+        if (fieldOnlyNew) fieldOnlyNew.classList.add('hidden');
         fieldScrolls.classList.remove('hidden');
         fieldBatch.classList.add('hidden');
         fieldFilters.classList.remove('hidden');
@@ -1332,7 +1344,8 @@
 
         if (mode === 'list_posts') {
           endpoint = '/api/actions/list-posts';
-          bodyPayload = { target_url: url };
+          const onlyNew = document.getElementById('scraper-only-new') ? document.getElementById('scraper-only-new').checked : false;
+          bodyPayload = { target_url: url, only_new: onlyNew };
         } else if (mode === 'download_pending') {
 
           endpoint = '/api/actions/download-pending';

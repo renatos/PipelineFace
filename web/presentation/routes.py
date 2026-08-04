@@ -71,6 +71,7 @@ class ScraperRequest(BaseModel):
 class ListPostsRequest(BaseModel):
     target_url: str
     max_scrolls: Optional[int] = None
+    only_new: bool = False
 
 
 class DownloadPendingRequest(BaseModel):
@@ -258,7 +259,7 @@ def action_list_posts(payload: ListPostsRequest, background_tasks: BackgroundTas
     if status.get("running"):
         raise HTTPException(status_code=400, detail=f"Processo {status.get('name')} já está em execução.")
 
-    background_tasks.add_task(run_list_posts_use_case.execute, payload.target_url, payload.max_scrolls)
+    background_tasks.add_task(run_list_posts_use_case.execute, payload.target_url, payload.max_scrolls, payload.only_new)
     return {"status": "started", "message": f"Listagem de posts iniciada para {payload.target_url}"}
 
 

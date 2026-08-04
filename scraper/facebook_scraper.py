@@ -146,6 +146,7 @@ class FacebookScraper:
         only_videos: bool = False,
         only_images: bool = False,
         headless: bool = True,
+        only_new: bool = False,
     ):
         # Carregar config do MongoDB com fallback para defaults
         cfg = _get_mongo_config()
@@ -163,6 +164,7 @@ class FacebookScraper:
         self.only_videos = only_videos
         self.only_images = only_images
         self.headless = headless
+        self.only_new = only_new
 
         # Criar diretórios
         for d in [self.session_dir, self.output_videos, self.output_images, self.output_metadata]:
@@ -859,6 +861,18 @@ class FacebookScraper:
                 seen_post_ids = set()
                 last_height = 0
                 no_change_count = 0
+                consecutive_existing_count = 0
+                stop_scroll_flag = False
+
+                if db is not None and self.only_new:
+                    latest_doc = db["profile_posts"].find_one(
+                        {"profile_url": self.target_url},
+                        sort=[("discovered_at", -1)]
+                    )
+                    if latest_doc and latest_doc.get("discovered_at"):
+                        console.print(f"[bold cyan]ℹ️ Modo --only-new ativado: buscando apenas posts com data posterior a {latest_doc['discovered_at']}[/bold cyan]")
+                    else:
+                        console.print(f"[bold cyan]ℹ️ Modo --only-new ativado: nenhum post anterior encontrado no banco. Todos os posts encontrados serão catalogados.[/bold cyan]")
 
                 # Para o Step 1 (catalogar todos os posts), garante limite alto de scrolls ate o fim da pagina
                 max_list_scrolls = max(self.max_scrolls, 200)
@@ -866,6 +880,9 @@ class FacebookScraper:
                 console.print(f"\n[bold]📜 Iniciando scroll contínuo para catalogar TODOS os posts (até {max_list_scrolls} iterações ou fim do feed)...[/bold]\n")
 
                 for scroll_num in range(1, max_list_scrolls + 1):
+                    if stop_scroll_flag:
+                        break
+
                     page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
                     time.sleep(self.scroll_pause)
 
@@ -941,10 +958,21 @@ class FacebookScraper:
 
                         if db is not None:
                             try:
-                                # Adicionar mídia ao array media_items sem duplicar pelo media_id
-                                # Caso o post já possua mídias, atualiza o post_type para "album" se houver múltiplos itens de mídia
                                 existing_post = db["profile_posts"].find_one({"post_id": post_id})
-                                existing_medias = existing_post.get("media_items", []) if existing_post else []
+                                
+                                if self.only_new and existing_post:
+                                    consecutive_existing_count += 1
+                                    if consecutive_existing_count >= 5:
+                                        console.print(f"[bold green]✨ Modo --only-new: {consecutive_existing_count} posts já catalogados no banco encontrados em sequência. Finalizando catalogação de novos posts.[/bold green]")
+                                        stop_scroll_flag = True
+                                        break
+                                    continue
+
+                                if existing_post:
+                                    existing_medias = existing_post.get("media_items", [])
+                                else:
+                                    existing_medias = []
+                                    consecutive_existing_count = 0
                                 
                                 # Filtrar duplicatas por media_id
                                 media_exists = any(m.get("media_id") == media_id for m in existing_medias)
@@ -1538,6 +1566,11 @@ Exemplos:
         help="Step 1: Apenas catalogar posts do perfil-alvo no MongoDB, sem realizar download",
     )
     parser.add_argument(
+        "--only-new",
+        action="store_true",
+        help="Apenas posts novos: insere apenas posts posteriores à última data registrada no MongoDB",
+    )
+    parser.add_argument(
         "--download-pending",
         action="store_true",
         help="Step 2: Baixar mídias dos posts com status 'pending' em lote",
@@ -1585,6 +1618,7 @@ Exemplos:
         only_videos=args.only_videos,
         only_images=args.only_images,
         headless=headless,
+        only_new=args.only_new,
     )
 
     # Fluxo de execução

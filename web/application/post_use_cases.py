@@ -46,11 +46,13 @@ class RunListPostsUseCase:
         self.run_process_func = run_process_func
         self.config_repo = config_repo
 
-    def execute(self, target_url: str, max_scrolls: Optional[int] = None) -> Dict[str, str]:
+    def execute(self, target_url: str, max_scrolls: Optional[int] = None, only_new: bool = False) -> Dict[str, str]:
         configs = self.config_repo.as_dict()
         resolved_max_scrolls = max_scrolls or int(configs.get("list_posts_max_scrolls", 100))
 
         cmd = ["python3", "scraper/facebook_scraper.py", "--target", target_url, "--list-posts", "--max-scrolls", str(resolved_max_scrolls)]
+        if only_new:
+            cmd.append("--only-new")
         self.run_process_func(cmd, f"Listagem de Posts ({target_url})")
         return {"status": "started", "message": f"Listagem de posts iniciada para {target_url}"}
 
