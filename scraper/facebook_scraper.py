@@ -957,7 +957,16 @@ class FacebookScraper:
                     if stop_scroll_flag:
                         break
 
-                    page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
+                    page.evaluate("""() => {
+                        window.scrollBy(0, window.innerHeight * 2);
+                        window.scrollTo(0, document.body.scrollHeight);
+                        const main = document.querySelector('div[role="main"]');
+                        if (main) main.scrollTop += 1500;
+                    }""")
+                    try:
+                        page.keyboard.press("PageDown")
+                    except Exception:
+                        pass
                     time.sleep(self.scroll_pause)
 
                     # 1. Extrair unidades de posts do feed (agrupadas por card no DOM)
@@ -1201,20 +1210,17 @@ class FacebookScraper:
                     if scroll_num % 5 == 0 or scroll_num == 1:
                         console.print(f"  📊 Scroll {scroll_num}/{max_list_scrolls} — {len(seen_post_ids)} posts descobertos até o momento...")
 
-                    # Checar fim do conteúdo
-                    new_height = page.evaluate("document.documentElement.scrollHeight")
+                    # Checar fim do conteúdo e tratar modais
+                    self._dismiss_popups(page)
+                    new_height = page.evaluate("Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0)")
                     if new_height == last_height:
                         no_change_count += 1
-                        if no_change_count >= 5:
+                        if no_change_count >= 12:
                             console.print(f"[yellow]⚠️ Fim do feed de posts detectado no scroll {scroll_num}.[/yellow]")
                             break
                     else:
                         no_change_count = 0
                     last_height = new_height
-
-
-                    if scroll_num % 10 == 0:
-                        self._dismiss_popups(page)
 
                 context.storage_state(path=str(self._session_path()))
 

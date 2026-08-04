@@ -66,12 +66,12 @@ if echo "$@" | grep -q "\-\-login"; then
     podman-compose exec \
         -e DISPLAY="${DISPLAY:-:0}" \
         scraper \
-        python facebook_scraper.py "$@"
+        python scraper/facebook_scraper.py "$@"
 else
     # Execução headless normal
     info "Executando scraper em modo headless..."
     echo ""
-    podman-compose exec scraper python facebook_scraper.py "$@"
+    podman-compose exec scraper python scraper/facebook_scraper.py "$@"
 fi
 
 echo ""
