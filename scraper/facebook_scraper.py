@@ -992,6 +992,12 @@ class FacebookScraper:
                         if not primary_post_id and candidate_post_ids:
                             primary_post_id, primary_url = candidate_post_ids[0]
 
+                        if not primary_post_id and (unit_images or unit_videos):
+                            first_url = self._clean_facebook_url(unit_images[0]["url"] if unit_images else unit_videos[0])
+                            _, img_fbid = self._extract_post_and_media_ids(first_url)
+                            primary_post_id = img_fbid or f"card_{hashlib.md5(first_url.encode()).hexdigest()[:16]}"
+                            primary_url = first_url
+
                         # Se encontrou um post_id para o card e existem imagens/vídeos nele
                         if primary_post_id and (unit_images or unit_videos or unit_links):
                             card_media_items = []
@@ -1065,23 +1071,24 @@ class FacebookScraper:
                                     except Exception as mongo_err:
                                         console.print(f"[yellow]⚠️ Erro ao salvar post do card no MongoDB: {mongo_err}[/yellow]")
 
-                    # 2. Fallback: Extrair elementos individuais caso cards não tenham sido detectados
-                    page_videos = self._extract_video_urls(page)
-                    page_images = self._extract_image_urls(page)
-                    page_post_links = self._extract_post_links(page)
+                    # 2. Fallback: Extrair elementos individuais apenas se nenhum card foi detectado no feed
+                    if not feed_units:
+                        page_videos = self._extract_video_urls(page)
+                        page_images = self._extract_image_urls(page)
+                        page_post_links = self._extract_post_links(page)
 
-                    for pl in page_post_links:
-                        url = pl.get("url", "")
-                        if url:
-                            raw_items.append({"url": url, "type": "post", "text": pl.get("text")})
-                    for v in page_videos:
-                        url = v.get("url", "")
-                        if url:
-                            raw_items.append({"url": url, "type": "video", "text": v.get("text")})
-                    for img in page_images:
-                        url = img.get("url", "")
-                        if url:
-                            raw_items.append({"url": url, "type": "image", "text": img.get("alt")})
+                        for pl in page_post_links:
+                            url = pl.get("url", "")
+                            if url:
+                                raw_items.append({"url": url, "type": "post", "text": pl.get("text")})
+                        for v in page_videos:
+                            url = v.get("url", "")
+                            if url:
+                                raw_items.append({"url": url, "type": "video", "text": v.get("text")})
+                        for img in page_images:
+                            url = img.get("url", "")
+                            if url:
+                                raw_items.append({"url": url, "type": "image", "text": img.get("alt")})
 
                     for item in raw_items:
                         item_url = self._clean_facebook_url(item["url"])

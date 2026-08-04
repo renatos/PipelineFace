@@ -248,9 +248,11 @@ class KnowledgePipeline:
                         pass
                 
                 if not target_post_id:
-                    post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', f.name)
-                    if post_id_match:
-                        target_post_id = post_id_match.group(1)
+                    clean = re.sub(r'^(?:foto_|post_|Vídeo_)', '', f.stem, flags=re.IGNORECASE)
+                    clean = re.sub(r'_slide_\d+.*$', '', clean, flags=re.IGNORECASE)
+                    clean = re.sub(r'_[a-f0-9]{6,12}$', '', clean, flags=re.IGNORECASE)
+                    if clean and len(clean) >= 6:
+                        target_post_id = clean
 
                 if target_post_id:
                     if target_post_id not in post_groups:
@@ -274,15 +276,25 @@ class KnowledgePipeline:
                         "post_id": post_id
                     })
 
+            # Agrupar unmatched_files via busca por relação de carrossel
+            visited_unmatched = set()
             for f in unmatched_files:
-                if f.stem not in processed:
+                if f in visited_unmatched:
+                    continue
+                related = self.get_carousel_related_images(f)
+                for r in related:
+                    visited_unmatched.add(r)
+                
+                sorted_rel = sorted(related, key=lambda x: x.name)
+                prim = sorted_rel[0]
+                if prim.stem not in processed:
                     pending.append({
-                        "path": f,
-                        "carousel_paths": [f],
-                        "filename": f.name,
-                        "basename": f.stem,
-                        "type": "image",
-                        "ext": f.suffix.lower()
+                        "path": prim,
+                        "carousel_paths": sorted_rel,
+                        "filename": prim.name,
+                        "basename": prim.stem,
+                        "type": "album" if len(sorted_rel) > 1 else "image",
+                        "ext": prim.suffix.lower()
                     })
 
         return sorted(pending, key=lambda x: x["filename"])
@@ -625,25 +637,28 @@ class KnowledgePipeline:
         db = self.get_mongo_db()
         if db is not None:
             try:
-                post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', target_filepath.name)
+                post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?([a-f0-9]{8,32})', target_filepath.name, re.IGNORECASE)
                 target_post_id = post_id_match.group(1) if post_id_match else None
+                
+                # Se encontrou o post_id no nome, buscar todas as mídias daquele post_id
                 if target_post_id:
                     post_doc = db["profile_posts"].find_one({"post_id": target_post_id})
                     if post_doc:
-                        # Buscar por timestamp de descoberta similar (mesmo carrossel de fotos)
-                        disc_at = post_doc.get("discovered_at")
-                        if disc_at:
-                            same_time_posts = list(db["profile_posts"].find({"discovered_at": disc_at, "post_type": "image"}))
-                            related_paths = []
-                            for p_doc in same_time_posts:
-                                for item in p_doc.get("media_items", []):
-                                    fname = item.get("filename")
-                                    if fname:
-                                        fpath = target_filepath.parent / fname
-                                        if fpath.exists() and fpath not in related_paths:
-                                            related_paths.append(fpath)
-                            if len(related_paths) > 1:
-                                return sorted(related_paths)
+                        related_paths = []
+                        for item in post_doc.get("media_items", []):
+                            fname = item.get("filename")
+                            if fname:
+                                fpath = target_filepath.parent / fname
+                                if fpath.exists() and fpath not in related_paths:
+                                    related_paths.append(fpath)
+                        if len(related_paths) > 1:
+                            return sorted(related_paths)
+
+                    # Fallback: buscar arquivos no disco com o mesmo prefixo de post_id
+                    prefix = f"foto_{target_post_id}"
+                    disk_related = [f for f in target_filepath.parent.glob(f"{prefix}*") if f.is_file()]
+                    if len(disk_related) > 1:
+                        return sorted(disk_related)
             except Exception:
                 pass
 
