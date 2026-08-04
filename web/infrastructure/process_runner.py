@@ -4,6 +4,7 @@ Async Process Runner — PipelineFace (Clean Architecture)
 Gerenciador isolado de execução de subprocessos (Pipeline e Scraper) com capacidade de encerramento (Kill/Terminate).
 """
 
+import os
 import subprocess
 import signal
 from datetime import datetime
@@ -35,12 +36,14 @@ class AsyncProcessRunner:
         self.active_process["logs"] = [f"🚀 Iniciando {process_name}: {' '.join(command)}"]
 
         try:
+            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
             self.proc = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                cwd=str(self.project_root)
+                cwd=str(self.project_root),
+                env=env
             )
             for line in iter(self.proc.stdout.readline, ''):
                 if line:
