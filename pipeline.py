@@ -231,12 +231,59 @@ class KnowledgePipeline:
                         })
 
         if self.input_images_dir.exists():
-            for f in self.input_images_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
-                    if f.stem not in processed:
-                        pending.append({
-                            "path": f, "filename": f.name, "basename": f.stem, "type": "image", "ext": f.suffix.lower()
-                        })
+            db = self.get_mongo_db()
+            image_files = [f for f in self.input_images_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+            
+            post_groups = {}
+            unmatched_files = []
+
+            for f in image_files:
+                target_post_id = None
+                if db is not None:
+                    try:
+                        pdoc = db["profile_posts"].find_one({"media_items.filename": f.name})
+                        if pdoc:
+                            target_post_id = pdoc.get("post_id")
+                    except Exception:
+                        pass
+                
+                if not target_post_id:
+                    post_id_match = re.search(r'(?:Vídeo_|foto_|post_)?(\d{10,20})', f.name)
+                    if post_id_match:
+                        target_post_id = post_id_match.group(1)
+
+                if target_post_id:
+                    if target_post_id not in post_groups:
+                        post_groups[target_post_id] = []
+                    post_groups[target_post_id].append(f)
+                else:
+                    unmatched_files.append(f)
+
+            for post_id, f_list in post_groups.items():
+                sorted_files = sorted(f_list, key=lambda x: x.name)
+                primary_file = sorted_files[0]
+                basename = f"post_{post_id}"
+                if basename not in processed and primary_file.stem not in processed:
+                    pending.append({
+                        "path": primary_file,
+                        "carousel_paths": sorted_files,
+                        "filename": primary_file.name,
+                        "basename": basename,
+                        "type": "album" if len(sorted_files) > 1 else "image",
+                        "ext": primary_file.suffix.lower(),
+                        "post_id": post_id
+                    })
+
+            for f in unmatched_files:
+                if f.stem not in processed:
+                    pending.append({
+                        "path": f,
+                        "carousel_paths": [f],
+                        "filename": f.name,
+                        "basename": f.stem,
+                        "type": "image",
+                        "ext": f.suffix.lower()
+                    })
 
         return sorted(pending, key=lambda x: x["filename"])
 
@@ -660,40 +707,68 @@ class KnowledgePipeline:
             context = f"## Vídeo de SEO: {filename}\n"
             if transcription: context += f"## Transcrição do Áudio:\n{transcription}\n\n"
             if visual_summary: context += f"## Telas/Frames Visuais do Vídeo:\n{visual_summary}\n\n"
-        else:
-            context = f"## Imagem/Post de SEO: {filename}\n"
-            if visual_summary: context += f"## Conteúdo/Texto Transcrito da Imagem:\n{visual_summary}\n\n"
 
-        system_prompt = (
-            "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
-            "Sua missão é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do conteúdo fornecido, "
-            "capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n"
-            "IDIOMA OBRIGATÓRIO: Escreva TODAS as respostas EXCLUSIVAMENTE em Português do Brasil (pt-BR). "
-            "Nunca responda em espanhol, inglês ou qualquer outro idioma.\n\n"
-            "REGRAS CRÍTICAS — SIGA RIGOROSAMENTE:\n"
-            "1. EXTRAIA apenas informações PRESENTES no conteúdo. NUNCA invente dados.\n"
-            "2. Se um campo não pode ser preenchido com dados reais, use \"Não identificado no conteúdo\".\n"
-            "3. Cada passo DEVE conter uma AÇÃO CONCRETA (ex: 'Acesse google.com e digite...', 'Clique no menu...').\n"
-            "4. Os termos em 'termos_e_exemplos_usados' devem ser LITERALMENTE do conteúdo.\n"
-            "5. Se a transcrição contiver erros prováveis, interprete pelo contexto.\n"
-            "6. Inclua URLs e nomes EXATOS de ferramentas quando mencionados.\n"
-            "7. O campo 'nivel_dificuldade' deve ser: 'iniciante', 'intermediario' ou 'avancado'.\n"
-            "8. O campo 'tempo_estimado_implementacao' deve ser realista (ex: '15 minutos', '1 hora').\n\n"
-            "RETORNE APENAS um JSON válido:\n"
-            "{\n"
-            '  "titulo_estrategia": "título objetivo e descritivo da estratégia/dica",\n'
-            '  "resumo_executivo": "resumo em 2-3 frases do que o conteúdo ensina",\n'
-            '  "passo_a_passo_detalhado": ["Passo 1: Ação concreta...", "Passo 2: ..."],\n'
-            '  "ferramentas_e_telas_utilizadas": ["Nome exato da ferramenta mencionada"],\n'
-            '  "termos_e_exemplos_usados": ["termo literal extraído do conteúdo"],\n'
-            '  "aplicacao_no_negocio": "como aplicar esta dica para gerar resultados concretos",\n'
-            '  "conceitos_mencionados": ["conceito de SEO/marketing mencionado"],\n'
-            '  "nivel_dificuldade": "iniciante|intermediario|avancado",\n'
-            '  "tempo_estimado_implementacao": "estimativa de tempo para implementar",\n'
-            '  "pre_requisitos": ["o que o usuário precisa ter/saber antes de começar"],\n'
-            '  "resultado_esperado": "o que o usuário obterá ao implementar esta dica"\n'
-            "}"
-        )
+            system_prompt = (
+                "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
+                "Sua missão é extrair um TUTORIAL PASSO A PASSO ULTRA DETALHADO a partir do conteúdo fornecido, "
+                "capturando com EXATIDÃO cada clique, menu, ferramenta e tela demonstrada.\n\n"
+                "IDIOMA OBRIGATÓRIO: Escreva TODAS as respostas EXCLUSIVAMENTE em Português do Brasil (pt-BR). "
+                "Nunca responda em espanhol, inglês ou qualquer outro idioma.\n\n"
+                "REGRAS CRÍTICAS — SIGA RIGOROSAMENTE:\n"
+                "1. EXTRAIA apenas informações PRESENTES no conteúdo. NUNCA invente dados.\n"
+                "2. Se um campo não pode ser preenchido com dados reais, use \"Não identificado no conteúdo\".\n"
+                "3. Cada passo DEVE conter uma AÇÃO CONCRETA (ex: 'Acesse google.com e digite...', 'Clique no menu...').\n"
+                "4. Os termos em 'termos_e_exemplos_usados' devem ser LITERALMENTE do conteúdo.\n"
+                "5. Se a transcrição contiver erros prováveis, interprete pelo contexto.\n"
+                "6. Inclua URLs e nomes EXATOS de ferramentas quando mencionados.\n"
+                "7. O campo 'nivel_dificuldade' deve ser: 'iniciante', 'intermediario' ou 'avancado'.\n"
+                "8. O campo 'tempo_estimado_implementacao' deve ser realista (ex: '15 minutos', '1 hora').\n\n"
+                "RETORNE APENAS um JSON válido:\n"
+                "{\n"
+                '  "titulo_estrategia": "título objetivo e descritivo da estratégia/dica",\n'
+                '  "resumo_executivo": "resumo em 2-3 frases do que o conteúdo ensina",\n'
+                '  "passo_a_passo_detalhado": ["Passo 1: Ação concreta...", "Passo 2: ..."],\n'
+                '  "ferramentas_e_telas_utilizadas": ["Nome exato da ferramenta mencionada"],\n'
+                '  "termos_e_exemplos_usados": ["termo literal extraído do conteúdo"],\n'
+                '  "aplicacao_no_negocio": "como aplicar esta dica para gerar resultados concretos",\n'
+                '  "conceitos_mencionados": ["conceito de SEO/marketing mencionado"],\n'
+                '  "nivel_dificuldade": "iniciante|intermediario|avancado",\n'
+                '  "tempo_estimado_implementacao": "estimativa de tempo para implementar",\n'
+                '  "pre_requisitos": ["o que o usuário precisa ter/saber antes de começar"],\n'
+                '  "resultado_esperado": "o que o usuário obterá ao implementar esta dica"\n'
+                "}"
+            )
+        else:
+            context = f"## Post de Imagem/Carrossel de SEO: {filename}\n"
+            if visual_summary: context += f"## Transcrição e Análise dos Slides do Carrossel/Infográfico:\n{visual_summary}\n\n"
+
+            system_prompt = (
+                "Você é um Consultor Especialista em SEO (Search Engine Optimization) e Marketing de Conteúdo.\n"
+                "Sua missão é sintetizar este CARROSSEL / INFOGRÁFICO VISUAL DE SEO em um guia de conhecimento altamente estruturado e prático.\n"
+                "Sua análise deve consolidar TODAS as lições, conceitos, dicas e checklists apresentados ao longo de TODOS os slides da imagem/carrossel em um único ensinamento coeso.\n\n"
+                "IDIOMA OBRIGATÓRIO: Escreva TODAS as respostas EXCLUSIVAMENTE em Português do Brasil (pt-BR).\n\n"
+                "REGRAS CRÍTICAS — SIGA RIGOROSAMENTE:\n"
+                "1. SINTETIZE as informações presentes nos slides sem inventar dados adicionais.\n"
+                "2. No campo 'passo_a_passo_detalhado', consolide a sequência lógica das dicas ensinadas nos slides (ex: 'Passo 1: Definir a palavra-chave principal...', 'Passo 2: Otimizar a estrutura...').\n"
+                "3. Os termos em 'termos_e_exemplos_usados' devem ser extraídos literalmente dos slides.\n"
+                "4. Inclua ferramentas e conceitos mencionados visualmente.\n"
+                "5. O campo 'nivel_dificuldade' deve ser: 'iniciante', 'intermediario' ou 'avancado'.\n"
+                "6. O campo 'tempo_estimado_implementacao' deve ser realista (ex: '15 minutos', '30 minutos').\n\n"
+                "RETORNE APENAS um JSON válido:\n"
+                "{\n"
+                '  "titulo_estrategia": "título claro e atraente resumindo a dica do carrossel/infográfico",\n'
+                '  "resumo_executivo": "resumo em 2-3 frases do objetivo e ensinamento principal do carrossel",\n'
+                '  "passo_a_passo_detalhado": ["Recomendação/Passo 1 extraído dos slides", "Recomendação/Passo 2..."],\n'
+                '  "ferramentas_e_telas_utilizadas": ["Ferramenta ou plataforma mencionada nos slides"],\n'
+                '  "termos_e_exemplos_usados": ["termo ou exemplo literal extraído do carrossel"],\n'
+                '  "aplicacao_no_negocio": "como aplicar esta dica para obter resultados em SEO",\n'
+                '  "conceitos_mencionados": ["conceito de SEO/marketing presente no carrossel"],\n'
+                '  "nivel_dificuldade": "iniciante|intermediario|avancado",\n'
+                '  "tempo_estimado_implementacao": "estimativa de tempo para aplicar",\n'
+                '  "pre_requisitos": ["o que o usuário precisa antes de aplicar"],\n'
+                '  "resultado_esperado": "resultado concreto esperado ao aplicar a dica"\n'
+                "}"
+            )
 
         res_str = self.query_ollama(self.text_model, prompt=context, system_prompt=system_prompt, json_format=True)
         try:
@@ -713,7 +788,6 @@ class KnowledgePipeline:
             try:
                 translated_str = self.query_ollama(self.text_model, prompt=translate_prompt, system_prompt="Retorne apenas o JSON traduzido, sem explicações.", json_format=True)
                 translated_data = json.loads(translated_str)
-                # Garantir chaves principais
                 if "titulo_estrategia" in translated_data:
                     data = translated_data
             except Exception:
@@ -726,8 +800,9 @@ class KnowledgePipeline:
         basename: str = item["basename"]
         filetype: str = item["type"]
         filename: str = item["filename"]
+        carousel_paths: list[Path] = item.get("carousel_paths") or [filepath]
 
-        console.print(f"\n[bold blue]🚀 Processando ({filetype.upper()}): {filename}[/bold blue]")
+        console.print(f"\n[bold blue]🚀 Processando ({filetype.upper()}): {filename} ({len(carousel_paths)} slide(s))[/bold blue]")
         send_telemetry_event(self.run_id, "START_FILE", status="in_progress", filename=filename, message=f"Iniciando {filename}")
 
         try:
@@ -758,12 +833,12 @@ class KnowledgePipeline:
 
             else:
                 send_telemetry_event(self.run_id, "VISION_CLASSIFY", status="in_progress", filename=filename, message="Analisando conteúdo da imagem/carrossel")
-                carousel_paths = self.get_carousel_related_images(filepath)
                 if len(carousel_paths) > 1:
-                    console.print(f"  [bold cyan]🎠 Carrossel detectado com {len(carousel_paths)} slides![/bold cyan]")
+                    console.print(f"  [bold cyan]🎠 Carrossel unificado com {len(carousel_paths)} slides![/bold cyan]")
                 visual_summary = self.ocr_image(filepath, carousel_paths=carousel_paths)
+                saved_frame_paths = [str(p) for p in carousel_paths]
 
-            send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando tutorial e conhecimento em SEO via LLM")
+            send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando síntese em SEO via LLM")
             seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
             
             seo_knowledge = self.validate_seo_knowledge(
@@ -781,7 +856,7 @@ class KnowledgePipeline:
             saved_frames = [
                 {
                     "filename": Path(fpath).name,
-                    "url": f"/api/media/frames/{basename}/{Path(fpath).name}"
+                    "url": f"/api/media/input/images/{Path(fpath).name}" if filetype != "video" else f"/api/media/frames/{basename}/{Path(fpath).name}"
                 }
                 for fpath in saved_frame_paths
             ]
@@ -790,7 +865,7 @@ class KnowledgePipeline:
                 "basename": basename,
                 "metadata": {
                     "source": "facebook_profile_seo",
-                    "pipeline_version": "3.1.0 (Python Nativo com OCR e Correção)",
+                    "pipeline_version": "3.2.0 (Carrossel Unificado com OCR e Prompt Dedicado)",
                     "processed_at": datetime.now().isoformat(),
                     "author": post_meta.get("author"),
                     "author_url": post_meta.get("author_url"),
@@ -809,7 +884,7 @@ class KnowledgePipeline:
                     "type": filetype,
                     "extension": item["ext"],
                     "url": original_url,
-                    "media_url": f"/api/media/input/{filetype}s/{filename}" if filepath.exists() else None,
+                    "media_url": f"/api/media/input/{filetype}s/{filename}" if (filepath.exists() and filetype == "video") else None,
                     "duration_seconds": duration_seconds,
                     "size_bytes": filepath.stat().st_size if filepath.exists() else 0
                 },
@@ -844,7 +919,7 @@ class KnowledgePipeline:
                         {"$set": document},
                         upsert=True
                     )
-                    console.print(f"[bold green]✅ Sucesso! Conhecimento salvo diretamente no MongoDB (coleção: seo_knowledge)[/bold green]")
+                    console.print(f"[bold green]✅ Sucesso! Conhecimento do carrossel salvo no MongoDB (coleção: seo_knowledge)[/bold green]")
                     saved_to_db = True
                 except Exception as mongo_err:
                     console.print(f"[bold red]❌ Erro ao salvar no MongoDB: {mongo_err}[/bold red]")
@@ -855,13 +930,14 @@ class KnowledgePipeline:
                     json.dump(document, f, ensure_ascii=False, indent=2)
                 console.print(f"[bold yellow]⚠️ Salvo em backup JSON local: {output_path}[/bold yellow]")
 
-            # Deletar o arquivo de entrada original para liberar espaço em disco
-            try:
-                if filepath.exists():
-                    filepath.unlink()
-                    console.print(f"[green]🗑️  Arquivo de entrada removido para liberar espaço: {filename}[/green]")
-            except Exception as del_err:
-                console.print(f"[yellow]⚠️  Falha ao remover arquivo de entrada {filename}: {del_err}[/yellow]")
+            # Deletar todos os arquivos de entrada do carrossel para liberar espaço em disco
+            for c_path in carousel_paths:
+                try:
+                    if c_path.exists():
+                        c_path.unlink()
+                        console.print(f"[green]🗑️  Arquivo de entrada removido: {c_path.name}[/green]")
+                except Exception as del_err:
+                    console.print(f"[yellow]⚠️  Falha ao remover arquivo {c_path.name}: {del_err}[/yellow]")
 
             # Limpar arquivo de áudio temporário se existir
             if filetype == "video":

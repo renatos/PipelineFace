@@ -554,6 +554,80 @@ class FacebookScraper:
         }""")
         return videos
 
+    def _extract_feed_units(self, page) -> list[dict]:
+        """Extrai unidades de posts do feed agrupadas por container de card (post)."""
+        units = page.evaluate("""() => {
+            const results = [];
+            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
+            
+            // Selecionar containers de cards de post no feed do Facebook
+            let cards = Array.from(mainContainer.querySelectorAll('div[role="article"], div[data-pagelet*="FeedUnit"]'));
+            
+            if (cards.length === 0) {
+                const anchors = mainContainer.querySelectorAll('a[href*="/posts/"], a[href*="set=pcb."], a[href*="/photo"], a[href*="/videos/"], a[href*="/reel/"]');
+                const cardSet = new Set();
+                anchors.forEach(a => {
+                    let parent = a.parentElement;
+                    for (let i = 0; i < 6; i++) {
+                        if (parent && parent !== mainContainer) {
+                            if (parent.tagName === 'DIV' && parent.children.length > 1) {
+                                cardSet.add(parent);
+                                break;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                });
+                cards = Array.from(cardSet);
+            }
+
+            cards.forEach(card => {
+                const links = [];
+                const images = [];
+                const videos = [];
+
+                const textEl = card.querySelector('div[dir="auto"]');
+                const text = textEl ? textEl.textContent.trim().substring(0, 200) : "";
+
+                const anchors = card.querySelectorAll('a[href*="/posts/"], a[href*="set=pcb."], a[href*="/photo"], a[href*="/videos/"], a[href*="/reel/"], a[href*="fbid="]');
+                anchors.forEach(a => {
+                    if (a.href && !a.href.includes('notif') && !a.href.includes('ref=bookmarks')) {
+                        links.push(a.href);
+                    }
+                });
+
+                const imgs = card.querySelectorAll('img');
+                imgs.forEach(img => {
+                    if (img.src && !img.src.includes('emoji') && !img.src.includes('rsrc.php')) {
+                        images.push({
+                            url: img.src,
+                            alt: img.alt || null
+                        });
+                    }
+                });
+
+                const vids = card.querySelectorAll('video');
+                vids.forEach(v => {
+                    const src = v.src || v.querySelector('source')?.src;
+                    if (src && !src.startsWith('blob:')) {
+                        videos.push(src);
+                    }
+                });
+
+                if (links.length > 0 || images.length > 0 || videos.length > 0) {
+                    results.push({
+                        links: Array.from(new Set(links)),
+                        images: images,
+                        videos: Array.from(new Set(videos)),
+                        text: text
+                    });
+                }
+            });
+
+            return results;
+        }""")
+        return units
+
     def _extract_image_urls(self, page) -> list[dict]:
         """Extrai URLs de imagens da página atual estritamente do feed do perfil."""
         images = page.evaluate("""() => {
@@ -886,14 +960,116 @@ class FacebookScraper:
                     page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
                     time.sleep(self.scroll_pause)
 
+                    # 1. Extrair unidades de posts do feed (agrupadas por card no DOM)
+                    feed_units = self._extract_feed_units(page)
+                    raw_items = []
 
-                    # Extrair elementos de mídia e links de post da página
+                    # Processar mídias agrupadas por card
+                    for unit in feed_units:
+                        unit_text = unit.get("text") or ""
+                        unit_links = unit.get("links", [])
+                        unit_images = unit.get("images", [])
+                        unit_videos = unit.get("videos", [])
+
+                        # Determinar post_id do card
+                        candidate_post_ids = []
+                        for l in unit_links:
+                            clean_l = self._clean_facebook_url(l)
+                            pid, _ = self._extract_post_and_media_ids(clean_l)
+                            if pid:
+                                candidate_post_ids.append((pid, clean_l))
+
+                        primary_post_id = None
+                        primary_url = None
+
+                        # Priorizar pcb > posts > videos > fbid
+                        for pid, url in candidate_post_ids:
+                            if "pcb" in url or "/posts/" in url or "/videos/" in url or "/reel/" in url:
+                                primary_post_id = pid
+                                primary_url = url
+                                break
+
+                        if not primary_post_id and candidate_post_ids:
+                            primary_post_id, primary_url = candidate_post_ids[0]
+
+                        # Se encontrou um post_id para o card e existem imagens/vídeos nele
+                        if primary_post_id and (unit_images or unit_videos or unit_links):
+                            card_media_items = []
+                            for idx_img, img in enumerate(unit_images):
+                                img_url = self._clean_facebook_url(img["url"])
+                                _, img_fbid = self._extract_post_and_media_ids(img_url)
+                                media_id = f"m_{img_fbid or primary_post_id[:16]}_{idx_img}"
+                                card_media_items.append({
+                                    "media_id": media_id,
+                                    "url": img_url,
+                                    "type": "image",
+                                    "filename": None,
+                                    "downloaded": False,
+                                    "download_error": None
+                                })
+
+                            for idx_v, v_url in enumerate(unit_videos):
+                                clean_v = self._clean_facebook_url(v_url)
+                                media_id = f"m_{primary_post_id[:16]}_v{idx_v}"
+                                card_media_items.append({
+                                    "media_id": media_id,
+                                    "url": clean_v,
+                                    "type": "video",
+                                    "filename": None,
+                                    "downloaded": False,
+                                    "download_error": None
+                                })
+
+                            if card_media_items:
+                                card_post_type = "video" if (unit_videos and not unit_images) else ("album" if len(card_media_items) > 1 else "image")
+                                is_new_post = primary_post_id not in seen_post_ids
+                                seen_post_ids.add(primary_post_id)
+
+                                if db is not None:
+                                    try:
+                                        existing_post = db["profile_posts"].find_one({"post_id": primary_post_id})
+                                        existing_medias = existing_post.get("media_items", []) if existing_post else []
+                                        
+                                        # Mesclar mídias sem duplicar media_id
+                                        merged_medias = list(existing_medias)
+                                        for c_item in card_media_items:
+                                            if not any(m.get("media_id") == c_item["media_id"] for m in merged_medias):
+                                                merged_medias.append(c_item)
+
+                                        final_post_type = "album" if len(merged_medias) > 1 else card_post_type
+
+                                        db["profile_posts"].update_one(
+                                            {"post_id": primary_post_id},
+                                            {
+                                                "$set": {
+                                                    "profile_url": self.target_url,
+                                                    "profile_name": profile_name,
+                                                    "post_url": primary_url or self.target_url,
+                                                    "post_type": final_post_type,
+                                                    "media_items": merged_medias,
+                                                    "post_text_preview": unit_text or (primary_url[:100] if primary_url else None),
+                                                    "scroll_position": scroll_num,
+                                                    "updated_at": datetime.now().isoformat()
+                                                },
+                                                "$setOnInsert": {
+                                                    "status": "pending",
+                                                    "discovered_at": datetime.now().isoformat(),
+                                                    "error_message": None
+                                                }
+                                            },
+                                            upsert=True
+                                        )
+                                        if is_new_post:
+                                            new_posts_count += 1
+                                        cataloged_count += 1
+                                    except Exception as mongo_err:
+                                        console.print(f"[yellow]⚠️ Erro ao salvar post do card no MongoDB: {mongo_err}[/yellow]")
+
+                    # 2. Fallback: Extrair elementos individuais caso cards não tenham sido detectados
                     page_videos = self._extract_video_urls(page)
                     page_images = self._extract_image_urls(page)
                     page_post_links = self._extract_post_links(page)
 
-                    # Agrupar mídias por post (usando URL do link ou hash da mídia)
-                    raw_items = []
                     for pl in page_post_links:
                         url = pl.get("url", "")
                         if url:
@@ -906,7 +1082,6 @@ class FacebookScraper:
                         url = img.get("url", "")
                         if url:
                             raw_items.append({"url": url, "type": "image", "text": img.get("alt")})
-
 
                     for item in raw_items:
                         item_url = self._clean_facebook_url(item["url"])
@@ -1110,7 +1285,7 @@ class FacebookScraper:
             post_success = True
             downloaded_files = []
 
-            for media in media_items:
+            for idx_m, media in enumerate(media_items, 1):
                 media_id = media.get("media_id", f"m_{post_id[:16]}_0")
                 url = media.get("url", "")
                 media_type = media.get("type", "image")
@@ -1189,7 +1364,8 @@ class FacebookScraper:
                     # Imagem
                     try:
                         import requests
-                        filename = self._url_to_filename(url, "jpg")
+                        slide_suffix = f"_slide_{idx_m}" if len(media_items) > 1 else ""
+                        filename = f"foto_{post_id}{slide_suffix}_{self._url_hash(url)[:8]}.jpg"
                         filepath = self.output_images / filename
                         resp = requests.get(url, timeout=60, stream=True)
                         if resp.status_code == 200:
@@ -1201,7 +1377,7 @@ class FacebookScraper:
                                 {"post_id": post_id, "media_items.media_id": media_id},
                                 {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
                             )
-                            console.print(f"  [green]✅ Imagem baixada com sucesso[/green]")
+                            console.print(f"  [green]✅ Imagem baixada com sucesso: {filename}[/green]")
                         else:
                             post_success = False
                     except Exception as ex:
