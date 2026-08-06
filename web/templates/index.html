@@ -300,12 +300,18 @@
 
   <!-- MODAL LIGHTBOX / ZOOM DE IMAGENS -->
   <div id="modal-lightbox" onclick="closeModal('modal-lightbox')" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex flex-col items-center justify-center p-4">
-    <button onclick="closeModal('modal-lightbox')" class="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-white transition z-10 shadow-lg">
+    <button onclick="closeModal('modal-lightbox')" class="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-white transition z-10 shadow-lg" title="Fechar (ESC)">
       <i data-lucide="x" class="w-6 h-6"></i>
     </button>
-    <div class="relative max-w-5xl max-h-[85vh] flex flex-col items-center justify-center space-y-3" onclick="event.stopPropagation()">
-      <img id="lightbox-img" src="" alt="Zoom Image" class="max-h-[80vh] w-auto object-contain rounded-xl shadow-2xl border border-slate-700 cursor-zoom-out" onclick="closeModal('modal-lightbox')">
-      <p id="lightbox-caption" class="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 text-center truncate max-w-xl"></p>
+    <div id="lightbox-container" class="relative max-w-5xl max-h-[85vh] flex flex-col items-center justify-center space-y-3 p-2 overflow-hidden" onclick="event.stopPropagation()">
+      <img id="lightbox-img" src="" alt="Zoom Image" class="max-h-[75vh] w-auto object-contain rounded-xl shadow-2xl border border-slate-700 cursor-zoom-in transition-transform duration-200" onclick="toggleLightboxZoom(event)">
+      <div class="flex items-center gap-3">
+        <p id="lightbox-caption" class="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 text-center truncate max-w-md"></p>
+        <a id="lightbox-link" href="#" target="_blank" class="hidden px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-blue-400/30">
+          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+          <span>Abrir Mídia / Link</span>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -752,13 +758,38 @@
       if (el) el.classList.add('hidden');
     }
 
-    function openLightbox(url, title = '') {
+    function toggleLightboxZoom(e) {
+      if (e) e.stopPropagation();
+      const img = document.getElementById('lightbox-img');
+      const container = document.getElementById('lightbox-container');
+      if (!img) return;
+
+      if (img.classList.contains('scale-125')) {
+        img.classList.remove('scale-125', 'cursor-zoom-out');
+        img.classList.add('cursor-zoom-in');
+        if (container) container.classList.remove('overflow-auto');
+      } else {
+        img.classList.add('scale-125', 'cursor-zoom-out');
+        img.classList.remove('cursor-zoom-in');
+        if (container) container.classList.add('overflow-auto');
+      }
+    }
+
+    function openLightbox(url, title = '', externalLink = '') {
       const img = document.getElementById('lightbox-img');
       const caption = document.getElementById('lightbox-caption');
+      const linkBtn = document.getElementById('lightbox-link');
       const modal = document.getElementById('modal-lightbox');
       if (img && modal) {
         img.src = url;
-        if (caption) caption.innerText = title;
+        img.classList.remove('scale-125', 'cursor-zoom-out');
+        img.classList.add('cursor-zoom-in');
+        if (caption) caption.innerText = title || 'Visualização Zoom';
+        if (linkBtn) {
+          const targetUrl = externalLink || url;
+          linkBtn.href = targetUrl;
+          linkBtn.classList.remove('hidden');
+        }
         modal.classList.remove('hidden');
         if (window.lucide) lucide.createIcons();
       }
