@@ -754,6 +754,35 @@
     let currentEventSource = '';
     let currentEventStatus = '';
 
+    function closeAllModals() {
+      if (typeof closeConfigPanel === 'function') closeConfigPanel();
+
+      const modalIds = [
+        'modal-lightbox',
+        'modal-pipeline-runs',
+        'modal-detail',
+        'modal-events',
+        'modal-error-detail',
+        'modal-post-detail',
+        'modal-scraper',
+        'modal-logs',
+        'playbook-modal',
+        'pillars-modal',
+        'pillar-edit-modal'
+      ];
+
+      modalIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+
+      document.querySelectorAll('.fixed').forEach(el => {
+        if (el.id !== 'config-panel' && el.id !== 'config-overlay') {
+          el.classList.add('hidden');
+        }
+      });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       loadStrategies();
@@ -761,11 +790,11 @@
       loadPostStats();
       setInterval(checkProcessStatus, 2500);
 
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' || e.key === 'Esc') {
-          ['modal-detail', 'modal-events', 'modal-error-detail', 'modal-scraper', 'modal-logs', 'modal-download-batch'].forEach(id => closeModal(id));
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
+          closeAllModals();
         }
-      });
+      }, true);
     });
 
     function formatDateBR(dateStr) {
@@ -1163,12 +1192,18 @@
                 <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: ${progressPct}%"></div>
               </div>
             </div>
-            <button onclick="openDetailModal('${item.basename}')" class="w-full py-2 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 border border-slate-700 hover:border-blue-500">
+            <button class="btn-detail-action w-full py-2 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 border border-slate-700 hover:border-blue-500">
               <i data-lucide="eye" class="w-4 h-4"></i>
               <span>Ver Detalhes & Mídia</span>
             </button>
           </div>
         `;
+
+        const btnDetail = card.querySelector('.btn-detail-action');
+        if (btnDetail) {
+          btnDetail.onclick = () => openDetailModal(item.basename);
+        }
+
         grid.appendChild(card);
       });
       lucide.createIcons();
@@ -1184,7 +1219,7 @@
     async function openDetailModal(basename) {
       activeBasename = basename;
       try {
-        const res = await fetch(`/api/strategies/${basename}`);
+        const res = await fetch(`/api/strategies/${encodeURIComponent(basename)}`);
         const item = await res.json();
         const knowledge = item.seo_knowledge || {};
         const impl = item.user_implementation || {};
@@ -1337,7 +1372,7 @@
     async function toggleStep(stepIndex) {
       if (!activeBasename) return;
       try {
-        const res = await fetch(`/api/strategies/${activeBasename}/step`, {
+        const res = await fetch(`/api/strategies/${encodeURIComponent(activeBasename)}/step`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ step_index: stepIndex })
@@ -1352,7 +1387,7 @@
       if (!activeBasename) return;
       const status = document.getElementById('modal-select-status').value;
       try {
-        await fetch(`/api/strategies/${activeBasename}/status`, {
+        await fetch(`/api/strategies/${encodeURIComponent(activeBasename)}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: status })
@@ -1389,7 +1424,7 @@
       const text = input.value.trim();
       if (!text) return;
       try {
-        const res = await fetch(`/api/strategies/${activeBasename}/comments`, {
+        const res = await fetch(`/api/strategies/${encodeURIComponent(activeBasename)}/comments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: text, author: 'Equipe' })
