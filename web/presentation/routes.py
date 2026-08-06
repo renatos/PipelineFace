@@ -482,7 +482,8 @@ def stream_video(filename: str, request: Request):
 
 @router.get("/api/media/input/images/{filename}")
 def serve_input_image(filename: str):
-    return media_service.serve_input_image(filename)
+    db_conn = getattr(list_posts_use_case.repository, 'db', None) if list_posts_use_case and hasattr(list_posts_use_case, 'repository') else None
+    return media_service.serve_input_image(filename, mongo_db=db_conn)
 
 
 @router.get("/api/media/frames/{basename}/{frame_name}")
