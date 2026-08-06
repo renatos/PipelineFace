@@ -7,7 +7,7 @@ Serviço responsável por servir imagens e realizar o streaming HTTP Range de v�
 import mimetypes
 import re
 from pathlib import Path
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 
 
@@ -57,7 +57,8 @@ class MediaStreamingService:
     def serve_input_image(self, filename: str):
         image_path = self.input_images_dir / filename
         if not image_path.exists():
-            raise HTTPException(status_code=404, detail="Imagem não encontrada")
+            placeholder_svg = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="none"><rect width="400" height="400" fill="#0f172a"/><rect x="2" y="2" width="396" height="396" rx="12" stroke="#1e293b" stroke-width="4"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="14" font-weight="600">Slide / Imagem Indisponível</text><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="11">Arquivo não mantido localmente</text></svg>"""
+            return Response(content=placeholder_svg, media_type="image/svg+xml")
         mime, _ = mimetypes.guess_type(str(image_path))
         return FileResponse(image_path, media_type=mime or "image/jpeg")
 

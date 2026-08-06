@@ -1216,6 +1216,23 @@
       document.getElementById('stat-concluidos').innerText = strategies.filter(s => s.user_implementation?.status === 'concluido').length;
     }
 
+    function switchDetailTab(tabName) {
+      ['overview', 'params', 'transcription'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (btn && content) {
+          if (t === tabName) {
+            btn.className = 'py-3 px-1 text-xs font-bold border-b-2 border-blue-500 text-blue-400 flex items-center gap-1.5 transition';
+            content.classList.remove('hidden');
+          } else {
+            btn.className = 'py-3 px-1 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition';
+            content.classList.add('hidden');
+          }
+        }
+      });
+      if (window.lucide) lucide.createIcons();
+    }
+
     async function openDetailModal(basename) {
       activeBasename = basename;
       try {
@@ -1258,7 +1275,7 @@
           savedFrames.forEach((f, idx) => {
             gridHtml += `
               <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${f.url}', 'Slide ${idx+1}/${savedFrames.length} - ${escHtml(f.filename || '')}')">
-                <img src="${f.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
+                <img src="${f.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/400x400/0f172a/64748b?text=Slide+Indisponivel';">
                 <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
                   ${idx+1}/${savedFrames.length}
                 </div>
@@ -1271,7 +1288,7 @@
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           mediaContainer.innerHTML = input.type === 'video' ?
             `<video controls src="${input.media_url}" class="w-full h-full object-contain"></video>` :
-            `<img src="${input.media_url}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${input.media_url}', '${escHtml(knowledge.titulo_estrategia || '')}')">`;
+            `<img src="${input.media_url}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${input.media_url}', '${escHtml(knowledge.titulo_estrategia || '')}')" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Imagem+Indisponivel';">`;
         } else {
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           let fallbackHtml = `
@@ -1296,6 +1313,7 @@
           const img = document.createElement('img');
           img.src = f.url;
           img.className = 'w-full h-20 object-cover rounded-lg border border-slate-800 cursor-pointer hover:opacity-80 transition';
+          img.onerror = () => { img.src = 'https://placehold.co/200x200/0f172a/64748b?text=Frame'; };
           img.onclick = () => openLightbox(f.url, f.filename || 'Quadro Salvo');
           framesContainer.appendChild(img);
         });
