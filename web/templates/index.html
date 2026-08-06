@@ -71,6 +71,11 @@
           <span>Sincronizar</span>
         </button>
 
+        <button onclick="openPipelineRunsModal()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
+          <i data-lucide="history" class="w-4 h-4 text-blue-400"></i>
+          <span>Histórico Runs</span>
+        </button>
+
         <button onclick="openEventsModal()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
           <i data-lucide="activity" class="w-4 h-4 text-rose-400"></i>
           <span>Eventos & Erros</span>
@@ -293,9 +298,51 @@
 
   </main>
 
-  <!-- MODAL DE DETALHES DA ESTRATÉGIA -->
+  <!-- MODAL LIGHTBOX / ZOOM DE IMAGENS -->
+  <div id="modal-lightbox" onclick="closeModal('modal-lightbox')" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex flex-col items-center justify-center p-4">
+    <button onclick="closeModal('modal-lightbox')" class="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-white transition z-10 shadow-lg">
+      <i data-lucide="x" class="w-6 h-6"></i>
+    </button>
+    <div class="relative max-w-5xl max-h-[85vh] flex flex-col items-center justify-center space-y-3" onclick="event.stopPropagation()">
+      <img id="lightbox-img" src="" alt="Zoom Image" class="max-h-[80vh] w-auto object-contain rounded-xl shadow-2xl border border-slate-700 cursor-zoom-out" onclick="closeModal('modal-lightbox')">
+      <p id="lightbox-caption" class="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 text-center truncate max-w-xl"></p>
+    </div>
+  </div>
+
+  <!-- MODAL DE HISTÓRICO DE RUNS DO PIPELINE (MONGODB) -->
+  <div id="modal-pipeline-runs" onclick="if(event.target === this) closeModal('modal-pipeline-runs')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="history" class="w-5 h-5 text-blue-400"></i>
+          <h3 class="text-base font-bold text-white">Histórico de Execuções (Pipeline Runs)</h3>
+        </div>
+        <button onclick="closeModal('modal-pipeline-runs')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-950 text-slate-400 uppercase text-[10px]">
+            <tr>
+              <th class="p-3">Run ID</th>
+              <th class="p-3">Origem</th>
+              <th class="p-3">Status</th>
+              <th class="p-3">Início</th>
+              <th class="p-3">Término</th>
+              <th class="p-3 text-center">Éxito / Total</th>
+              <th class="p-3 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="table-runs-body" class="divide-y divide-slate-800/60"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE DETALHES DA ESTRATÉGIA (COM ABAS) -->
   <div id="modal-detail" onclick="if(event.target === this) closeModal('modal-detail')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      
+      <!-- Modal Header -->
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
         <div class="flex items-center gap-3">
           <span id="modal-media-badge" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Vídeo</span>
@@ -306,66 +353,152 @@
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div class="lg:col-span-5 space-y-5 border-b lg:border-b-0 lg:border-r border-slate-800 pb-6 lg:pb-0 lg:pr-6">
-          <div>
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
-              <span class="flex items-center gap-1.5"><i data-lucide="film" class="w-4 h-4 text-blue-400"></i> Mídia de Entrada</span>
-              <span id="modal-original-link-container"></span>
-            </h4>
-            <div id="modal-media-container" class="rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2"></div>
-          </div>
-
-          <div>
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
-              <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i> Quadros Salvos (Telas & Gráficos)
-            </h4>
-            <div id="modal-frames-container" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800"></div>
-          </div>
-
-          <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-3">
-            <div>
-              <h5 class="text-xs font-semibold text-slate-400">Resumo Executivo</h5>
-              <p id="modal-resumo" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
-            </div>
-            <div>
-              <h5 class="text-xs font-semibold text-slate-400">Aplicação Prática no Negócio</h5>
-              <p id="modal-aplicacao" class="text-xs text-emerald-400/90 font-medium mt-1 leading-relaxed"></p>
-            </div>
-          </div>
-        </div>
-
-        <div class="lg:col-span-7 space-y-6 flex flex-col justify-between">
-          <div class="space-y-5">
-            <div class="flex items-center justify-between">
-              <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                <i data-lucide="list-checks" class="w-4 h-4 text-emerald-400"></i> Checklist do Tutorial
-              </h4>
-              <select id="modal-select-status" onchange="updateStrategyStatus()" class="bg-slate-950 border border-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
-                <option value="pendente">⏳ Pendente</option>
-                <option value="em_andamento">🔵 Em Andamento</option>
-                <option value="concluido">✅ Concluído</option>
-              </select>
-            </div>
-            <div id="modal-steps-container" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
-          </div>
-
-          <div class="border-t border-slate-800 pt-5 space-y-3">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <i data-lucide="message-square" class="w-4 h-4 text-amber-400"></i> Notas & Problemas Encontrados
-            </h4>
-            <div class="flex gap-2">
-              <input type="text" id="input-comment" placeholder="Digite uma nota sobre a aplicação ou erro encontrado..."
-                     class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500">
-              <button onclick="addComment()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1">
-                <i data-lucide="send" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
-            <div id="modal-comments-container" class="space-y-2 max-h-36 overflow-y-auto pr-1"></div>
-          </div>
-        </div>
+      <!-- Tab Bar -->
+      <div class="px-6 border-b border-slate-800 bg-slate-950/80 flex gap-4">
+        <button id="tab-btn-overview" onclick="switchDetailTab('overview')" class="py-3 px-1 text-xs font-bold border-b-2 border-blue-500 text-blue-400 flex items-center gap-1.5 transition">
+          <i data-lucide="layout" class="w-4 h-4"></i> Visão Geral & Checklist
+        </button>
+        <button id="tab-btn-params" onclick="switchDetailTab('params')" class="py-3 px-1 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition">
+          <i data-lucide="sliders" class="w-4 h-4"></i> Parâmetros & Metadados
+        </button>
+        <button id="tab-btn-transcription" onclick="switchDetailTab('transcription')" class="py-3 px-1 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition">
+          <i data-lucide="file-text" class="w-4 h-4"></i> Transcrição & OCR
+        </button>
       </div>
 
+      <!-- Tab Contents Container -->
+      <div class="flex-1 overflow-y-auto p-6">
+        
+        <!-- ABA 1: VISÃO GERAL & CHECKLIST -->
+        <div id="tab-content-overview" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-5 space-y-5 border-b lg:border-b-0 lg:border-r border-slate-800 pb-6 lg:pb-0 lg:pr-6">
+            <div>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
+                <span class="flex items-center gap-1.5"><i data-lucide="film" class="w-4 h-4 text-blue-400"></i> Mídia de Entrada</span>
+                <span id="modal-original-link-container"></span>
+              </h4>
+              <div id="modal-media-container" class="rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2"></div>
+            </div>
+
+            <div>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+                <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-400"></i> Quadros Salvos (Telas & Gráficos)
+              </h4>
+              <div id="modal-frames-container" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800"></div>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-3">
+              <div>
+                <h5 class="text-xs font-semibold text-slate-400">Resumo Executivo</h5>
+                <p id="modal-resumo" class="text-xs text-slate-300 mt-1 leading-relaxed"></p>
+              </div>
+              <div>
+                <h5 class="text-xs font-semibold text-slate-400">Aplicação Prática no Negócio</h5>
+                <p id="modal-aplicacao" class="text-xs text-emerald-400/90 font-medium mt-1 leading-relaxed"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-7 space-y-6 flex flex-col justify-between">
+            <div class="space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                  <i data-lucide="list-checks" class="w-4 h-4 text-emerald-400"></i> Checklist do Tutorial
+                </h4>
+                <select id="modal-select-status" onchange="updateStrategyStatus()" class="bg-slate-950 border border-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                  <option value="pendente">⏳ Pendente</option>
+                  <option value="em_andamento">🔵 Em Andamento</option>
+                  <option value="concluido">✅ Concluído</option>
+                </select>
+              </div>
+              <div id="modal-steps-container" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
+            </div>
+
+            <div class="border-t border-slate-800 pt-5 space-y-3">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="message-square" class="w-4 h-4 text-amber-400"></i> Notas & Problemas Encontrados
+              </h4>
+              <div class="flex gap-2">
+                <input type="text" id="input-comment" placeholder="Digite uma nota sobre a aplicação ou erro encontrado..."
+                       class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                <button onclick="addComment()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                  <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+              <div id="modal-comments-container" class="space-y-2 max-h-36 overflow-y-auto pr-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ABA 2: PARÂMETROS & METADADOS -->
+        <div id="tab-content-params" class="hidden space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
+              <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="gauge" class="w-3.5 h-3.5 text-blue-400"></i> Nível de Dificuldade
+              </span>
+              <p id="modal-param-dificuldade" class="text-sm font-bold text-white uppercase"></p>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
+              <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-400"></i> Tempo Estimado de Implementação
+              </span>
+              <p id="modal-param-tempo" class="text-sm font-bold text-white"></p>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 md:col-span-2">
+              <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="check-square" class="w-3.5 h-3.5 text-purple-400"></i> Pré-requisitos
+              </span>
+              <div id="modal-param-prerequisitos" class="flex flex-wrap gap-1.5 pt-1"></div>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-emerald-500/20 space-y-2 md:col-span-2">
+              <span class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="target" class="w-3.5 h-3.5 text-emerald-400"></i> Resultado Esperado
+              </span>
+              <p id="modal-param-resultado" class="text-xs text-slate-200 leading-relaxed font-medium"></p>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 md:col-span-2">
+              <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="book-open" class="w-3.5 h-3.5 text-cyan-400"></i> Conceitos & Termos Mencionados
+              </span>
+              <div id="modal-param-conceitos" class="flex flex-wrap gap-1.5 pt-1"></div>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 md:col-span-2">
+              <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i> Metadados da Extração
+              </span>
+              <div id="modal-param-metadados" class="text-xs text-slate-300 space-y-1 font-mono"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ABA 3: TRANSCRIÇÃO & OCR -->
+        <div id="tab-content-transcription" class="hidden space-y-6">
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <i data-lucide="mic" class="w-4 h-4 text-blue-400"></i> Transcrição de Áudio (Whisper)
+            </h4>
+            <div id="modal-transcription-container" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 leading-relaxed font-mono max-h-64 overflow-y-auto whitespace-pre-wrap select-all"></div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <i data-lucide="eye" class="w-4 h-4 text-indigo-400"></i> Descrição Visual & OCR de Frames (Moondream)
+            </h4>
+            <div id="modal-ocr-container" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 leading-relaxed font-mono max-h-64 overflow-y-auto whitespace-pre-wrap select-all"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
       <div class="flex justify-end p-4 border-t border-slate-800 bg-slate-950/40">
         <button onclick="closeModal('modal-detail')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition">
           Fechar
@@ -373,6 +506,7 @@
       </div>
     </div>
   </div>
+
 
   <!-- MODAL DE EVENTOS DE TELEMETRIA & ERROS NO MONGODB -->
   <div id="modal-events" onclick="if(event.target === this) closeModal('modal-events')" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4 overflow-y-auto">
@@ -804,36 +938,56 @@
         const mediaContainer = document.getElementById('post-modal-media-container');
         mediaContainer.innerHTML = '';
 
-        const firstMedia = (post.media_items || [])[0];
-        const mediaUrl = firstMedia ? firstMedia.url : post.post_url;
+        const items = post.media_items || [];
+        const isAlbum = post.post_type === 'album' || items.length > 1;
 
-        if (post.post_type === 'image' || (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || (mediaUrl.includes('.fbcdn.net') && !mediaUrl.includes('.mp4'))))) {
-          mediaContainer.innerHTML = `
-            <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
-              <img src="${mediaUrl}" alt="Preview" class="max-h-[400px] w-auto object-contain rounded-xl shadow-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Preview+indisponivel';" />
-            </div>`;
-        } else if (post.post_type === 'video' || (mediaUrl && mediaUrl.includes('.mp4'))) {
-          mediaContainer.innerHTML = `
-            <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
-              <video controls autoplay muted class="max-h-[400px] w-full rounded-xl shadow-2xl">
-                <source src="${mediaUrl}" type="video/mp4">
-                Seu navegador não suporta vídeos.
-              </video>
-            </div>`;
+        if (isAlbum && items.length > 0) {
+          let gridHtml = `<div class="w-full space-y-2">
+            <p class="text-xs text-purple-400 font-semibold flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5"></i> Carrossel / Álbum (${items.length} fotos) — Clique na imagem para zoom:</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[360px] overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">`;
+          items.forEach((m, idx) => {
+            gridHtml += `
+              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${m.url}', 'Foto ${idx+1}/${items.length} - ${escHtml(m.filename || post.post_id)}')">
+                <img src="${m.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/300x300/0f172a/64748b?text=IMG';">
+                <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
+                  ${idx+1}/${items.length}
+                </div>
+              </div>`;
+          });
+          gridHtml += `</div></div>`;
+          mediaContainer.innerHTML = gridHtml;
         } else {
-          mediaContainer.innerHTML = `
-            <div class="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center space-y-4">
-              <div class="w-16 h-16 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
-                <i data-lucide="link" class="w-8 h-8"></i>
-              </div>
-              <div>
-                <h4 class="text-sm font-bold text-white mb-1">Post / Reel do Facebook</h4>
-                <p class="text-xs text-slate-400 max-w-md mx-auto truncate">${post.post_url}</p>
-              </div>
-              <a href="${post.post_url}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-md">
-                <i data-lucide="external-link" class="w-4 h-4"></i> Abrir Post Original no Facebook
-              </a>
-            </div>`;
+          const firstMedia = items[0];
+          const mediaUrl = firstMedia ? firstMedia.url : post.post_url;
+
+          if (post.post_type === 'image' || (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || (mediaUrl.includes('.fbcdn.net') && !mediaUrl.includes('.mp4'))))) {
+            mediaContainer.innerHTML = `
+              <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner cursor-zoom-in" onclick="openLightbox('${mediaUrl}', 'Post ${post.post_id}')">
+                <img src="${mediaUrl}" alt="Preview" class="max-h-[400px] w-auto object-contain rounded-xl shadow-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Preview+indisponivel';" />
+              </div>`;
+          } else if (post.post_type === 'video' || (mediaUrl && mediaUrl.includes('.mp4'))) {
+            mediaContainer.innerHTML = `
+              <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
+                <video controls autoplay muted class="max-h-[400px] w-full rounded-xl shadow-2xl">
+                  <source src="${mediaUrl}" type="video/mp4">
+                  Seu navegador não suporta vídeos.
+                </video>
+              </div>`;
+          } else {
+            mediaContainer.innerHTML = `
+              <div class="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center space-y-4">
+                <div class="w-16 h-16 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
+                  <i data-lucide="link" class="w-8 h-8"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white mb-1">Post / Reel do Facebook</h4>
+                  <p class="text-xs text-slate-400 max-w-md mx-auto truncate">${post.post_url}</p>
+                </div>
+                <a href="${post.post_url}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-md">
+                  <i data-lucide="external-link" class="w-4 h-4"></i> Abrir Post Original no Facebook
+                </a>
+              </div>`;
+          }
         }
 
         document.getElementById('modal-post-detail').classList.remove('hidden');
@@ -903,12 +1057,21 @@
       if (search) url += `search=${encodeURIComponent(search)}&`;
       if (mediaType) url += `media_type=${mediaType}&`;
 
+      const grid = document.getElementById('strategies-grid');
+      const empty = document.getElementById('empty-state');
+      // Loading spinner feedback
+      grid.innerHTML = '<div class="col-span-full py-16 text-center text-slate-500"><i data-lucide="loader" class="w-8 h-8 animate-spin mx-auto mb-2 text-blue-400"></i>Carregando estratégias...</div>';
+      if (window.lucide) lucide.createIcons();
+
       try {
         const res = await fetch(url);
         const data = await res.json();
         renderGrid(data.strategies || []);
         updateStats(data.strategies || []);
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error(err);
+        grid.innerHTML = '<div class="col-span-full py-16 text-center text-rose-400 font-semibold">Erro ao carregar estratégias.</div>';
+      }
     }
 
     function renderGrid(strategies) {
@@ -959,18 +1122,31 @@
             qualityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border ${gradeColors[qualityGrade] || ''}" title="Score de Qualidade: ${qualityScore || 0}/100">Score ${qualityGrade}</span>`;
         }
 
+        const slidesCount = (item.content?.saved_frames || []).length;
+        let typeBadge = `<span class="text-xs font-bold text-slate-400">🖼️ Imagem</span>`;
+        if (input.type === 'video') {
+          typeBadge = `<span class="text-xs font-bold text-blue-400">📹 Vídeo</span>`;
+        } else if (input.type === 'album') {
+          typeBadge = `<span class="text-xs font-bold text-purple-400">📸 Carrossel (${slidesCount} slides)</span>`;
+        }
+
+        const authorName = item.metadata?.author ? `<span class="text-[10px] text-slate-500 font-medium">por ${escHtml(item.metadata.author)}</span>` : '';
+
         const card = document.createElement('div');
         card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-md hover:shadow-xl group';
         card.innerHTML = `
           <div class="space-y-3">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5">
-                <span class="text-xs font-bold text-slate-400">${input.type === 'video' ? '📹 Vídeo' : '🖼️ Imagem'}</span>
+                ${typeBadge}
                 ${qualityBadge}
               </div>
               ${statusBadge}
             </div>
-            <h3 class="text-sm font-bold text-white group-hover:text-blue-400 transition line-clamp-2 leading-snug">${title}</h3>
+            <div>
+              <h3 class="text-sm font-bold text-white group-hover:text-blue-400 transition line-clamp-2 leading-snug">${title}</h3>
+              ${authorName ? `<div class="mt-0.5">${authorName}</div>` : ''}
+            </div>
             <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">${resumo}</p>
             <div class="flex flex-wrap gap-1.5 pt-1">
               ${ferramentas.slice(0, 3).map(f => `<span class="px-2 py-0.5 rounded bg-slate-950 text-[10px] font-medium text-slate-300 border border-slate-800">${f}</span>`).join('')}
@@ -1013,9 +1189,11 @@
         const knowledge = item.seo_knowledge || {};
         const impl = item.user_implementation || {};
         const input = item.input_file || {};
+        const savedFrames = item.content?.saved_frames || [];
+        const isAlbum = input.type === 'album';
 
         document.getElementById('modal-title').innerText = knowledge.titulo_estrategia || item.basename;
-        document.getElementById('modal-media-badge').innerText = input.type === 'video' ? '📹 Vídeo Original' : '🖼️ Imagem Original';
+        document.getElementById('modal-media-badge').innerText = input.type === 'video' ? '📹 Vídeo Original' : (isAlbum ? `📸 Carrossel (${savedFrames.length} slides)` : '🖼️ Imagem Original');
         document.getElementById('modal-resumo').innerText = knowledge.resumo_executivo || 'Sem resumo.';
         document.getElementById('modal-aplicacao').innerText = knowledge.aplicacao_no_negocio || 'Aplique para ranquear melhor.';
         document.getElementById('modal-select-status').value = impl.status || 'pendente';
@@ -1028,22 +1206,43 @@
         }
 
         if (postUrl) {
-          originalLinkContainer.innerHTML = `<a href="${postUrl}" target="_blank" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline flex items-center gap-1"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Assistir Vídeo no Facebook</a>`;
+          const linkLabel = input.type === 'video' ? 'Assistir Vídeo no Facebook' : 'Ver Post no Facebook';
+          originalLinkContainer.innerHTML = `<a href="${postUrl}" target="_blank" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline flex items-center gap-1"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> ${linkLabel}</a>`;
         } else {
           originalLinkContainer.innerHTML = '';
         }
 
+        // TAB 1 — MEDIA CONTAINER (Grid se for álbum/carrossel, Player se vídeo/imagem)
         const mediaContainer = document.getElementById('modal-media-container');
         mediaContainer.innerHTML = '';
-        if (input.media_url) {
+
+        if (isAlbum && savedFrames.length > 0) {
+          let gridHtml = `<div class="w-full space-y-2">
+            <p class="text-xs text-purple-400 font-semibold flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5"></i> Todos os ${savedFrames.length} slides do carrossel — Clique para zoom:</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full p-2 max-h-80 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800">`;
+          savedFrames.forEach((f, idx) => {
+            gridHtml += `
+              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${f.url}', 'Slide ${idx+1}/${savedFrames.length} - ${escHtml(f.filename || '')}')">
+                <img src="${f.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200">
+                <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
+                  ${idx+1}/${savedFrames.length}
+                </div>
+              </div>`;
+          });
+          gridHtml += `</div></div>`;
+          mediaContainer.innerHTML = gridHtml;
+          mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 flex items-center justify-center p-2";
+        } else if (input.media_url) {
+          mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           mediaContainer.innerHTML = input.type === 'video' ?
             `<video controls src="${input.media_url}" class="w-full h-full object-contain"></video>` :
-            `<img src="${input.media_url}" class="w-full h-full object-contain">`;
+            `<img src="${input.media_url}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${input.media_url}', '${escHtml(knowledge.titulo_estrategia || '')}')">`;
         } else {
+          mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           let fallbackHtml = `
             <div class="text-center p-4 space-y-2">
               <i data-lucide="hard-drive-download" class="w-8 h-8 text-slate-500 mx-auto"></i>
-              <p class="text-xs text-slate-400 font-medium">Arquivo bruto removido para liberar espaço em disco.</p>
+              <p class="text-xs text-slate-400 font-medium">Arquivo bruto não disponível no servidor.</p>
           `;
           if (input.url) {
             fallbackHtml += `
@@ -1058,18 +1257,46 @@
 
         const framesContainer = document.getElementById('modal-frames-container');
         framesContainer.innerHTML = '';
-        (item.content?.saved_frames || []).forEach(f => {
+        savedFrames.forEach(f => {
           const img = document.createElement('img');
           img.src = f.url;
           img.className = 'w-full h-20 object-cover rounded-lg border border-slate-800 cursor-pointer hover:opacity-80 transition';
-          img.onclick = () => window.open(f.url, '_blank');
+          img.onclick = () => openLightbox(f.url, f.filename || 'Quadro Salvo');
           framesContainer.appendChild(img);
         });
 
-        const savedFrames = item.content?.saved_frames || [];
         renderStepsChecklist(knowledge.passo_a_passo_detalhado || [], impl.completed_steps || [], savedFrames);
         renderComments(impl.comments || []);
+
+        // TAB 2 — PARÂMETROS & METADADOS
+        document.getElementById('modal-param-dificuldade').innerText = knowledge.nivel_dificuldade || 'Não especificado';
+        document.getElementById('modal-param-tempo').innerText = knowledge.tempo_estimado_implementacao || 'Não especificado';
+
+        const prereqContainer = document.getElementById('modal-param-prerequisitos');
+        prereqContainer.innerHTML = (knowledge.pre_requisitos || []).map(p => `<span class="px-2 py-1 rounded bg-slate-900 text-slate-300 text-xs border border-slate-800 font-medium">${escHtml(p)}</span>`).join('') || '<span class="text-xs text-slate-500 italic">Nenhum</span>';
+
+        document.getElementById('modal-param-resultado').innerText = knowledge.resultado_esperado || 'Melhoria geral de autoridade e tráfego orgânico.';
+
+        const conceitosContainer = document.getElementById('modal-param-conceitos');
+        const conceitos = [...(knowledge.conceitos_mencionados || []), ...(knowledge.termos_e_exemplos_usados || [])];
+        conceitosContainer.innerHTML = conceitos.map(c => `<span class="px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 text-xs border border-cyan-800/40 font-mono">${escHtml(c)}</span>`).join('') || '<span class="text-xs text-slate-500 italic">Nenhum</span>';
+
+        const metaContainer = document.getElementById('modal-param-metadados');
+        const meta = item.metadata || {};
+        metaContainer.innerHTML = `
+          <div><span class="text-slate-500">Autor:</span> <span class="text-slate-200 font-semibold">${escHtml(meta.author || 'Desconhecido')}</span></div>
+          <div><span class="text-slate-500">Processado em:</span> <span class="text-slate-200">${meta.processed_at ? formatDateBR(meta.processed_at) : 'N/D'}</span></div>
+          <div><span class="text-slate-500">Versão Pipeline:</span> <span class="text-slate-200">${escHtml(meta.pipeline_version || 'N/D')}</span></div>
+          ${meta.post_text_preview ? `<div class="pt-2 text-slate-300 font-sans italic border-t border-slate-800">"${escHtml(meta.post_text_preview)}"</div>` : ''}
+        `;
+
+        // TAB 3 — TRANSCRIÇÃO & OCR
+        document.getElementById('modal-transcription-container').innerText = item.content?.transcription || item.content?.transcription_raw || 'Nenhuma transcrição de áudio registrada para este post.';
+        document.getElementById('modal-ocr-container').innerText = item.content?.visual_description || 'Nenhuma análise visual de OCR registrada para este post.';
+
+        switchDetailTab('overview');
         document.getElementById('modal-detail').classList.remove('hidden');
+        lucide.createIcons();
       } catch (err) { console.error(err); }
     }
 
@@ -1087,7 +1314,7 @@
         if (frame && frame.url) {
           frameButtonHtml = `
             <div class="flex items-center gap-2 pt-0.5">
-              <button type="button" onclick="window.open('${frame.url}', '_blank')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
+              <button type="button" onclick="openLightbox('${frame.url}', 'Quadro Passo ${idx+1}: ${escHtml(frame.filename || '')}')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
                 <i data-lucide="image" class="w-3.5 h-3.5"></i>
                 <span>Ver Tela / Frame (${frame.filename || 'Quadro'})</span>
               </button>
