@@ -747,6 +747,33 @@
 
   <!-- SCRIPTS -->
   <script>
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    }
+
+    function openLightbox(url, title = '') {
+      const img = document.getElementById('lightbox-img');
+      const caption = document.getElementById('lightbox-caption');
+      const modal = document.getElementById('modal-lightbox');
+      if (img && modal) {
+        img.src = url;
+        if (caption) caption.innerText = title;
+        modal.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     let currentFilterStatus = '';
     let currentPostFilterStatus = '';
     let currentSearchTimeout = null;
