@@ -1046,7 +1046,8 @@ class FacebookScraper:
                             video_link_candidates = [
                                 l for l in ([primary_url] + unit_links) if l and any(k in l.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
                             ]
-                            is_video_card = bool(video_link_candidates or unit_videos)
+                            if self.only_videos and not is_video_card:
+                                continue
 
                             if is_video_card:
                                 # Adicionar os links de vídeo
@@ -1214,6 +1215,8 @@ class FacebookScraper:
                             item["type"] == "video"
                             or any(k in item_url.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
                         )
+                        if self.only_videos and not is_video:
+                            continue
                         resolved_type = "video" if is_video else "image"
 
                         # Gerar media_id único (usando media_fbid se disponível ou post_id)
