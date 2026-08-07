@@ -1170,6 +1170,7 @@ class FacebookScraper:
                                         }
                                         if new_media_items:
                                             update_op["$addToSet"] = {"media_items": {"$each": new_media_items}}
+                                            update_op["$set"]["status"] = "pending"
 
                                         db["profile_posts"].update_one(
                                             {"post_id": primary_post_id},
@@ -1182,20 +1183,21 @@ class FacebookScraper:
                                     except Exception as mongo_err:
                                         console.print(f"[yellow]⚠️ Erro ao salvar post do card no MongoDB: {mongo_err}[/yellow]")
 
-                    # 2. Fallback: Extrair elementos individuais apenas se nenhum card foi detectado no feed
-                    if not feed_units:
-                        page_videos = self._extract_video_urls(page)
-                        page_images = self._extract_image_urls(page)
-                        page_post_links = self._extract_post_links(page)
+                    # Extrair links individuais de vídeos/reels/posts da página inteira (para capturar vídeos fora de cards padrões)
+                    page_post_links = self._extract_post_links(page)
+                    page_videos = self._extract_video_urls(page)
 
-                        for pl in page_post_links:
-                            url = pl.get("url", "")
-                            if url:
-                                raw_items.append({"url": url, "type": "post", "text": pl.get("text")})
-                        for v in page_videos:
-                            url = v.get("url", "")
-                            if url:
-                                raw_items.append({"url": url, "type": "video", "text": v.get("text")})
+                    for pl in page_post_links:
+                        url = pl.get("url", "")
+                        if url and any(k in url.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"]):
+                            raw_items.append({"url": url, "type": "video", "text": pl.get("text")})
+                    for v in page_videos:
+                        url = v.get("url", "")
+                        if url:
+                            raw_items.append({"url": url, "type": "video", "text": v.get("text")})
+
+                    if not feed_units:
+                        page_images = self._extract_image_urls(page)
                         for img in page_images:
                             url = img.get("url", "")
                             if url:
@@ -1289,6 +1291,7 @@ class FacebookScraper:
                                 }
                                 if not media_exists:
                                     update_op["$addToSet"] = {"media_items": media_item}
+                                    update_op["$set"]["status"] = "pending"
 
                                 res = db["profile_posts"].update_one(
                                     {"post_id": post_id},
