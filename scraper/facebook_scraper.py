@@ -1046,6 +1046,7 @@ class FacebookScraper:
                             video_link_candidates = [
                                 l for l in ([primary_url] + unit_links) if l and any(k in l.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
                             ]
+                            is_video_card = bool(video_link_candidates or unit_videos)
                             if self.only_videos and not is_video_card:
                                 continue
 
@@ -1172,6 +1173,7 @@ class FacebookScraper:
                                         if new_media_items:
                                             update_op["$addToSet"] = {"media_items": {"$each": new_media_items}}
                                             update_op["$set"]["status"] = "pending"
+                                            update_op["$setOnInsert"].pop("status", None)
 
                                         db["profile_posts"].update_one(
                                             {"post_id": primary_post_id},
@@ -1295,6 +1297,7 @@ class FacebookScraper:
                                 if not media_exists:
                                     update_op["$addToSet"] = {"media_items": media_item}
                                     update_op["$set"]["status"] = "pending"
+                                    update_op["$setOnInsert"].pop("status", None)
 
                                 res = db["profile_posts"].update_one(
                                     {"post_id": post_id},
@@ -1329,6 +1332,101 @@ class FacebookScraper:
                     else:
                         no_change_count = 0
                     last_height = new_height
+
+                # NAVEGAR TAMBÉM ÀS SUBPÁGINAS /reels/ E /videos/ DO PERFIL PARA CAPTURAR O GRID COMPLETO DE VÍDEOS
+                subpages = [
+                    f"{self.target_url.rstrip('/')}/reels/",
+                    f"{self.target_url.rstrip('/')}/videos/"
+                ]
+                for sub_url in subpages:
+                    try:
+                        console.print(f"\n[bold blue]🎬 Varrendo aba dedicada de mídias:[/bold blue] {sub_url}")
+                        page.goto(sub_url, timeout=PAGE_LOAD_TIMEOUT)
+                        time.sleep(3)
+                        self._dismiss_popups(page)
+                        
+                        last_h = 0
+                        no_chg = 0
+                        for sub_scroll in range(1, 40):
+                            page.evaluate("window.scrollBy(0, window.innerHeight * 3)")
+                            time.sleep(self.scroll_pause)
+                            
+                            sub_anchors = page.evaluate("""() => {
+                                const links = Array.from(document.querySelectorAll('a'));
+                                return links.map(a => ({ url: a.href, text: a.textContent?.trim() || '' }))
+                                            .filter(item => item.url && (item.url.includes('/reel/') || item.url.includes('/videos/') || item.url.includes('/watch/')));
+                            }""")
+                            
+                            for sa in sub_anchors:
+                                item_url = self._clean_facebook_url(sa["url"])
+                                post_id, media_fbid = self._extract_post_and_media_ids(item_url)
+                                if not post_id or post_id in seen_post_ids:
+                                    continue
+                                
+                                unique_sub_id = media_fbid or post_id[:16]
+                                media_id = f"m_{unique_sub_id}_v0"
+                                media_item = {
+                                    "media_id": media_id,
+                                    "url": item_url,
+                                    "type": "video",
+                                    "filename": None,
+                                    "downloaded": False,
+                                    "download_error": None
+                                }
+                                
+                                is_new_post = post_id not in seen_post_ids
+                                seen_post_ids.add(post_id)
+                                
+                                has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid=", "set=pcb"])
+                                post_url = item_url if has_fb_permalink else item_url
+                                
+                                if db is not None:
+                                    try:
+                                        existing_post = db["profile_posts"].find_one({"post_id": post_id})
+                                        existing_medias = existing_post.get("media_items", []) if existing_post else []
+                                        media_exists = any(m.get("media_id") == media_id for m in existing_medias)
+                                        
+                                        update_op = {
+                                            "$set": {
+                                                "profile_url": self.target_url,
+                                                "profile_name": profile_name,
+                                                "post_url": post_url,
+                                                "post_type": "video",
+                                                "scroll_position": sub_scroll,
+                                                "updated_at": datetime.now().isoformat()
+                                            },
+                                            "$setOnInsert": {
+                                                "status": "pending",
+                                                "discovered_at": datetime.now().isoformat(),
+                                                "error_message": None
+                                            }
+                                        }
+                                        if not media_exists:
+                                            update_op["$addToSet"] = {"media_items": media_item}
+                                            update_op["$set"]["status"] = "pending"
+                                            update_op["$setOnInsert"].pop("status", None)
+                                        
+                                        res = db["profile_posts"].update_one(
+                                            {"post_id": post_id},
+                                            update_op,
+                                            upsert=True
+                                        )
+                                        if res.upserted_id:
+                                            new_posts_count += 1
+                                        cataloged_count += 1
+                                    except Exception as mongo_err:
+                                        pass
+                            
+                            new_h = page.evaluate("Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0)")
+                            if new_h == last_h:
+                                no_chg += 1
+                                if no_chg >= 6:
+                                    break
+                            else:
+                                no_chg = 0
+                            last_h = new_h
+                    except Exception as sub_err:
+                        console.print(f"[yellow]⚠️ Erro ao varrer subpágina {sub_url}: {sub_err}[/yellow]")
 
                 context.storage_state(path=str(self._session_path()))
 
