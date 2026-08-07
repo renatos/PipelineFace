@@ -529,48 +529,6 @@ class FacebookScraper:
     # Coleta de URLs
     # --------------------------------------------------------
 
-    def _extract_video_urls(self, page) -> list[dict]:
-
-        """Extrai URLs de vídeos da página atual estritamente do feed do perfil."""
-        videos = page.evaluate("""() => {
-            const results = [];
-            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
-            
-            // Buscar elementos de vídeo
-            const videoElements = mainContainer.querySelectorAll('video');
-            videoElements.forEach(video => {
-                const src = video.src || video.querySelector('source')?.src;
-                if (src && !src.startsWith('blob:')) {
-                    results.push({
-                        url: src,
-                        type: 'video_element',
-                        poster: video.poster || null
-                    });
-                }
-            });
-
-            // Buscar links para vídeos/reels específicos do Facebook no feed
-            const links = mainContainer.querySelectorAll('a[href*="/videos/"], a[href*="/watch/"], a[href*="/reel/"]');
-            links.forEach(link => {
-                const href = link.href;
-                if (!href) return;
-                
-                // Descartar links genéricos e notificações
-                if (href.includes('/reel/?') || href.endsWith('/reel/') || href.endsWith('/watch/') || href.includes('notif')) return;
-
-                if (!results.some(r => r.url === href)) {
-                    results.push({
-                        url: href,
-                        type: 'video_link',
-                        text: link.textContent?.trim()?.substring(0, 100) || null
-                    });
-                }
-            });
-
-            return results;
-        }""")
-        return videos
-
     def _extract_feed_units(self, page) -> list[dict]:
         """Extrai unidades de posts do feed agrupadas por container de card (post)."""
         return self.image_extractor.extract_feed_units(page)
@@ -579,29 +537,50 @@ class FacebookScraper:
         """Extrai URLs de imagens da página atual estritamente do feed do perfil."""
         return self.image_extractor.extract_image_urls(page)
 
-    def _extract_post_links(self, page) -> list[dict]:
-        """Extrai todas as URLs de posts/mídias diretamente do feed principal ([role=main])."""
-        links = page.evaluate("""() => {
-            const results = [];
-            const seen = new Set();
-            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
-            
-            const anchors = mainContainer.querySelectorAll('a[href*="/posts/"], a[href*="/videos/"], a[href*="/reel/"], a[href*="fbid="], a[href*="story_fbid="], a[href*="/photo"]');
-            anchors.forEach(a => {
-                const href = a.href;
-                if (!href || seen.has(href)) return;
-                
-                // Descartar links de notificações, menus laterais e comentários de terceiros
-                if (href.includes('notif') || href.includes('/reel/?') || href.includes('ref=bookmarks')) return;
+    def _upsert_post_media(
+        self, db, post_id: str, profile_name: str, post_url: str, post_type: str,
+        post_text_preview: Optional[str], scroll_num: int, media_items: list[dict]
+    ) -> bool:
+        """Upsert atomicamente o documento do post no MongoDB adicionando mídias novas sem duplicatas."""
+        if db is None or not post_id or not media_items:
+            return False
 
-                seen.add(href);
-                const text = a.textContent ? a.textContent.trim().substring(0, 150) : "";
-                results.push({ url: href, text: text });
-            });
-            
-            return results;
-        }""")
-        return links
+        existing_post = db["profile_posts"].find_one({"post_id": post_id})
+        existing_medias = existing_post.get("media_items", []) if existing_post else []
+
+        new_media_items = [
+            c_item for c_item in media_items
+            if not any(m.get("media_id") == c_item["media_id"] or m.get("url") == c_item["url"] for m in existing_medias)
+        ]
+
+        final_post_type = "album" if len(existing_medias) + len(new_media_items) > 1 else post_type
+
+        update_op = {
+            "$set": {
+                "profile_url": self.target_url,
+                "profile_name": profile_name,
+                "post_url": post_url,
+                "post_type": final_post_type,
+                "scroll_position": scroll_num,
+                "updated_at": datetime.now().isoformat()
+            },
+            "$setOnInsert": {
+                "status": "pending",
+                "discovered_at": datetime.now().isoformat(),
+                "error_message": None
+            }
+        }
+
+        if post_text_preview:
+            update_op["$set"]["post_text_preview"] = post_text_preview
+
+        if new_media_items:
+            update_op["$addToSet"] = {"media_items": {"$each": new_media_items}}
+            update_op["$set"]["status"] = "pending"
+            update_op["$setOnInsert"].pop("status", None)
+
+        res = db["profile_posts"].update_one({"post_id": post_id}, update_op, upsert=True)
+        return bool(res.upserted_id)
 
     def _clean_facebook_url(self, url: str) -> str:
         """Limpa parâmetros de rastreamento (notif, comment_id, __cft__, __tn__) mantendo a URL direta do post/reel/foto."""
@@ -980,46 +959,15 @@ class FacebookScraper:
                                             continue
 
                                         if existing_post:
-                                            existing_medias = existing_post.get("media_items", [])
-                                        else:
-                                            existing_medias = []
                                             consecutive_existing_count = 0
 
-                                        # Identificar apenas mídias novas (sem duplicar media_id nem URL)
-                                        new_media_items = [
-                                            c_item for c_item in card_media_items
-                                            if not any(m.get("media_id") == c_item["media_id"] or m.get("url") == c_item["url"] for m in existing_medias)
-                                        ]
-
-                                        final_post_type = "album" if len(existing_medias) + len(new_media_items) > 1 else card_post_type
-
-                                        update_op = {
-                                            "$set": {
-                                                "profile_url": self.target_url,
-                                                "profile_name": profile_name,
-                                                "post_url": primary_url or self.target_url,
-                                                "post_type": final_post_type,
-                                                "post_text_preview": unit_text or (primary_url[:100] if primary_url else None),
-                                                "scroll_position": scroll_num,
-                                                "updated_at": datetime.now().isoformat()
-                                            },
-                                            "$setOnInsert": {
-                                                "status": "pending",
-                                                "discovered_at": datetime.now().isoformat(),
-                                                "error_message": None
-                                            }
-                                        }
-                                        if new_media_items:
-                                            update_op["$addToSet"] = {"media_items": {"$each": new_media_items}}
-                                            update_op["$set"]["status"] = "pending"
-                                            update_op["$setOnInsert"].pop("status", None)
-
-                                        db["profile_posts"].update_one(
-                                            {"post_id": primary_post_id},
-                                            update_op,
-                                            upsert=True
+                                        preview_text = unit_text or (primary_url[:100] if primary_url else None)
+                                        post_url = primary_url or self.target_url
+                                        is_inserted = self._upsert_post_media(
+                                            db, primary_post_id, profile_name, post_url, card_post_type,
+                                            preview_text, scroll_num, card_media_items
                                         )
-                                        if is_new_post:
+                                        if is_inserted or is_new_post:
                                             new_posts_count += 1
                                         cataloged_count += 1
                                     except Exception as mongo_err:
@@ -1039,22 +987,12 @@ class FacebookScraper:
                         if not post_id:
                             continue
 
-                        # Determinar tipo de mídia com precisão (vídeo/reel vs imagem)
-                        is_video = (
-                            item["type"] == "video"
-                            or any(k in item_url.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
-                        )
-                        if self.only_videos and not is_video:
-                            continue
-                        resolved_type = "video" if is_video else "image"
-
-                        # Gerar media_id único (usando media_fbid se disponível ou post_id)
                         unique_sub_id = media_fbid or post_id[:16]
                         media_id = f"m_{unique_sub_id}_0"
                         media_item = {
                             "media_id": media_id,
                             "url": item_url,
-                            "type": resolved_type,
+                            "type": "image",
                             "filename": None,
                             "downloaded": False,
                             "download_error": None
@@ -1063,30 +1001,12 @@ class FacebookScraper:
                         is_new_post = post_id not in seen_post_ids
                         seen_post_ids.add(post_id)
 
-                        # Se for um permalink valido do Facebook usa a URL do post, caso contrario usa a propria URL direta da midia
                         has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid=", "set=pcb"])
                         post_url = item_url if has_fb_permalink else item_url
-
-                        post_type = resolved_type
-                        post_doc = {
-                            "post_id": post_id,
-                            "profile_url": self.target_url,
-                            "profile_name": profile_name,
-                            "post_url": post_url,
-                            "post_type": post_type,
-                            "status": "pending",
-                            "media_items": [media_item],
-                            "post_text_preview": item.get("text") or item_url[:100],
-                            "scroll_position": scroll_num,
-                            "discovered_at": datetime.now().isoformat(),
-                            "updated_at": datetime.now().isoformat(),
-                            "error_message": None
-                        }
 
                         if db is not None:
                             try:
                                 existing_post = db["profile_posts"].find_one({"post_id": post_id})
-                                
                                 if self.only_new and existing_post:
                                     consecutive_existing_count += 1
                                     if consecutive_existing_count >= 5:
@@ -1096,42 +1016,13 @@ class FacebookScraper:
                                     continue
 
                                 if existing_post:
-                                    existing_medias = existing_post.get("media_items", [])
-                                else:
-                                    existing_medias = []
                                     consecutive_existing_count = 0
-                                
-                                # Filtrar duplicatas por media_id ou URL
-                                media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
 
-                                final_post_type = "album" if len(existing_medias) + (0 if media_exists else 1) > 1 else post_type
-
-                                update_op = {
-                                    "$set": {
-                                        "profile_url": self.target_url,
-                                        "profile_name": profile_name,
-                                        "post_url": post_doc["post_url"],
-                                        "post_type": final_post_type,
-                                        "scroll_position": scroll_num,
-                                        "updated_at": datetime.now().isoformat()
-                                    },
-                                    "$setOnInsert": {
-                                        "status": "pending",
-                                        "discovered_at": datetime.now().isoformat(),
-                                        "error_message": None
-                                    }
-                                }
-                                if not media_exists:
-                                    update_op["$addToSet"] = {"media_items": media_item}
-                                    update_op["$set"]["status"] = "pending"
-                                    update_op["$setOnInsert"].pop("status", None)
-
-                                res = db["profile_posts"].update_one(
-                                    {"post_id": post_id},
-                                    update_op,
-                                    upsert=True
+                                is_inserted = self._upsert_post_media(
+                                    db, post_id, profile_name, post_url, "image",
+                                    item.get("text") or item_url[:100], scroll_num, [media_item]
                                 )
-                                if res.upserted_id:
+                                if is_inserted or is_new_post:
                                     new_posts_count += 1
                                 cataloged_count += 1
                             except Exception as mongo_err:
@@ -1141,7 +1032,7 @@ class FacebookScraper:
                             send_telemetry_event(
                                 self.run_id, "POST_DISCOVERED", status="info", target_url=self.target_url,
                                 message=f"Post descoberto: {post_id}",
-                                metrics={"post_id": post_id, "post_type": post_type, "scroll": scroll_num}
+                                metrics={"post_id": post_id, "post_type": "image", "scroll": scroll_num}
                             )
 
                     # Log de progresso a cada 5 iterações
@@ -1193,40 +1084,17 @@ class FacebookScraper:
 
                             if db is not None:
                                 try:
-                                    existing_post = db["profile_posts"].find_one({"post_id": post_id})
-                                    existing_medias = existing_post.get("media_items", []) if existing_post else []
-                                    media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
-
-                                    update_op = {
-                                        "$set": {
-                                            "profile_url": self.target_url,
-                                            "profile_name": profile_name,
-                                            "post_url": item_url,
-                                            "post_type": "video",
-                                            "scroll_position": sub_scroll,
-                                            "updated_at": datetime.now().isoformat()
-                                        },
-                                        "$setOnInsert": {
-                                            "status": "pending",
-                                            "discovered_at": datetime.now().isoformat(),
-                                            "error_message": None
-                                        }
-                                    }
-                                    if not media_exists:
-                                        update_op["$addToSet"] = {"media_items": media_item}
-                                        update_op["$set"]["status"] = "pending"
-                                        update_op["$setOnInsert"].pop("status", None)
-
-                                    res = db["profile_posts"].update_one(
-                                        {"post_id": post_id},
-                                        update_op,
-                                        upsert=True
+                                    is_inserted = self._upsert_post_media(
+                                        db, post_id, profile_name, item_url, "video",
+                                        item.get("text") or item_url[:100], sub_scroll, [media_item]
                                     )
-                                    if res.upserted_id:
+                                    if is_inserted:
                                         new_posts_count += 1
                                     cataloged_count += 1
                                 except Exception as mongo_err:
-                                    pass
+                                    console.print(f"[yellow]⚠️ Erro ao salvar vídeo da subpágina no MongoDB: {mongo_err}[/yellow]")
+                    except Exception as sub_err:
+                        console.print(f"[yellow]⚠️ Erro ao varrer subpágina {sub_url}: {sub_err}[/yellow]")
                     except Exception as sub_err:
                         console.print(f"[yellow]⚠️ Erro ao varrer subpágina {sub_url}: {sub_err}[/yellow]")
 

@@ -56,6 +56,7 @@ class ReelVideoExtractor(BaseExtractor):
                     no_chg = 0
                 last_h = new_h
         except Exception as e:
-            pass
+            if hasattr(self.scraper, "errors"):
+                self.scraper.errors.append(f"Erro ao extrair mídias de {sub_url}: {e}")
 
         return items

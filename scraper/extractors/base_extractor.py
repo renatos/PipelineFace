@@ -4,13 +4,15 @@ from urllib.parse import urlparse, parse_qs, urlencode
 
 
 class BaseExtractor:
-    """Classe base abstrata para extratores de conteúdo do Facebook."""
+    """Classe base para extratores de conteúdo do Facebook."""
 
     def __init__(self, scraper_instance=None):
         self.scraper = scraper_instance
 
     def clean_facebook_url(self, url: str) -> str:
         """Limpa parâmetros de rastreamento mantendo a URL direta do post/reel/foto."""
+        if self.scraper and hasattr(self.scraper, "_clean_facebook_url"):
+            return self.scraper._clean_facebook_url(url)
         if not url:
             return url
         try:
@@ -26,8 +28,10 @@ class BaseExtractor:
         except Exception:
             return url
 
-    def extract_post_and_media_ids(self, url: str) -> tuple[str, str | None]:
+    def extract_post_and_media_ids(self, url: str) -> tuple[str | None, str | None]:
         """Extrai um identificador único de post (post_id) e de mídia a partir da URL do Facebook."""
+        if self.scraper and hasattr(self.scraper, "_extract_post_and_media_ids"):
+            return self.scraper._extract_post_and_media_ids(url)
         if not url:
             return None, None
         
