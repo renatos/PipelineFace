@@ -1047,84 +1047,45 @@ class FacebookScraper:
                                 l for l in ([primary_url] + unit_links) if l and any(k in l.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
                             ]
                             is_video_card = bool(video_link_candidates or unit_videos)
-                            if self.only_videos and not is_video_card:
+                            # No feed normal, ignorar vídeos (vídeos são coletados exclusivamente nas abas /reels/ e /videos/)
+                            if is_video_card:
                                 continue
 
-                            if is_video_card:
-                                # Adicionar os links de vídeo
-                                added_video_urls = set()
-                                for idx_v, v_url in enumerate(video_link_candidates + unit_videos):
-                                    clean_v = self._clean_facebook_url(v_url)
-                                    if clean_v in added_video_urls:
-                                        continue
-                                    added_video_urls.add(clean_v)
-                                    media_id = f"m_{primary_post_id[:16]}_v{idx_v}"
-                                    card_media_items.append({
-                                        "media_id": media_id,
-                                        "url": clean_v,
-                                        "type": "video",
-                                        "filename": None,
-                                        "downloaded": False,
-                                        "download_error": None
-                                    })
-                                
-                                # Se houver links explicitos de fotos alem do video (ex: album misto), adiciona-os
-                                if unit_photo_links:
-                                    for idx_p, p_url in enumerate(unit_photo_links):
-                                        clean_p = self._clean_facebook_url(p_url)
-                                        _, p_fbid = self._extract_post_and_media_ids(clean_p)
-                                        card_media_items.append({
-                                            "media_id": f"m_{p_fbid or primary_post_id[:16]}_p{idx_p}",
-                                            "url": clean_p,
-                                            "type": "image",
-                                            "filename": None,
-                                            "downloaded": False,
-                                            "download_error": None
-                                        })
-                            else:
-                                # Card de imagens/fotos
-                                for idx_img, img in enumerate(unit_images):
-                                    img_url = self._clean_facebook_url(img["url"])
-                                    if img_url.startswith("data:"):
-                                        continue  # placeholder de lazy-load, nunca é mídia real
-                                    _, img_fbid = self._extract_post_and_media_ids(img_url)
-                                    media_id = f"m_{img_fbid or primary_post_id[:16]}_{idx_img}"
-                                    card_media_items.append({
-                                        "media_id": media_id,
-                                        "url": img_url,
-                                        "type": "image",
-                                        "filename": None,
-                                        "downloaded": False,
-                                        "download_error": None
-                                    })
+                            # Card de imagens/fotos
+                            for idx_img, img in enumerate(unit_images):
+                                img_url = self._clean_facebook_url(img["url"])
+                                if img_url.startswith("data:"):
+                                    continue  # placeholder de lazy-load, nunca é mídia real
+                                _, img_fbid = self._extract_post_and_media_ids(img_url)
+                                media_id = f"m_{img_fbid or primary_post_id[:16]}_{idx_img}"
+                                card_media_items.append({
+                                    "media_id": media_id,
+                                    "url": img_url,
+                                    "type": "image",
+                                    "filename": None,
+                                    "downloaded": False,
+                                    "download_error": None
+                                })
 
-                                # Permalinks de foto (/photo?fbid=...) como mídia de imagem.
-                                for idx_p, p_url in enumerate(unit_photo_links):
-                                    clean_p = self._clean_facebook_url(p_url)
-                                    _, p_fbid = self._extract_post_and_media_ids(clean_p)
-                                    if p_fbid and any(p_fbid in m["media_id"] for m in card_media_items):
-                                        continue
-                                    if any(m["url"] == clean_p for m in card_media_items):
-                                        continue
-                                    card_media_items.append({
-                                        "media_id": f"m_{p_fbid or primary_post_id[:16]}_p{idx_p}",
-                                        "url": clean_p,
-                                        "type": "image",
-                                        "filename": None,
-                                        "downloaded": False,
-                                        "download_error": None
-                                    })
+                            # Permalinks de foto (/photo?fbid=...) como mídia de imagem.
+                            for idx_p, p_url in enumerate(unit_photo_links):
+                                clean_p = self._clean_facebook_url(p_url)
+                                _, p_fbid = self._extract_post_and_media_ids(clean_p)
+                                if p_fbid and any(p_fbid in m["media_id"] for m in card_media_items):
+                                    continue
+                                if any(m["url"] == clean_p for m in card_media_items):
+                                    continue
+                                card_media_items.append({
+                                    "media_id": f"m_{p_fbid or primary_post_id[:16]}_p{idx_p}",
+                                    "url": clean_p,
+                                    "type": "image",
+                                    "filename": None,
+                                    "downloaded": False,
+                                    "download_error": None
+                                })
 
                             if card_media_items:
-                                has_video = any(m["type"] == "video" for m in card_media_items)
-                                has_image = any(m["type"] == "image" for m in card_media_items)
-                                if has_video and not has_image:
-                                    card_post_type = "video"
-                                elif len(card_media_items) > 1:
-                                    card_post_type = "album"
-                                else:
-                                    card_post_type = "image"
-                                
+                                card_post_type = "album" if len(card_media_items) > 1 else "image"
                                 is_new_post = primary_post_id not in seen_post_ids
                                 seen_post_ids.add(primary_post_id)
 
@@ -1186,19 +1147,7 @@ class FacebookScraper:
                                     except Exception as mongo_err:
                                         console.print(f"[yellow]⚠️ Erro ao salvar post do card no MongoDB: {mongo_err}[/yellow]")
 
-                    # Extrair links individuais de vídeos/reels/posts da página inteira (para capturar vídeos fora de cards padrões)
-                    page_post_links = self._extract_post_links(page)
-                    page_videos = self._extract_video_urls(page)
-
-                    for pl in page_post_links:
-                        url = pl.get("url", "")
-                        if url and any(k in url.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"]):
-                            raw_items.append({"url": url, "type": "video", "text": pl.get("text")})
-                    for v in page_videos:
-                        url = v.get("url", "")
-                        if url:
-                            raw_items.append({"url": url, "type": "video", "text": v.get("text")})
-
+                    # No feed normal, coletar apenas imagens caso não existam cards
                     if not feed_units:
                         page_images = self._extract_image_urls(page)
                         for img in page_images:
