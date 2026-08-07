@@ -874,7 +874,10 @@
       sec.classList.toggle('hidden');
     }
 
+    let postStatsInFlight = false;
     async function loadPostStats() {
+      if (postStatsInFlight) return;
+      postStatsInFlight = true;
       try {
         const res = await fetch('/api/profile-posts/stats');
         const stats = await res.json();
@@ -884,20 +887,30 @@
         document.getElementById('post-stat-downloaded').innerText = stats.downloaded || 0;
         document.getElementById('post-stat-processed').innerText = stats.processed || 0;
         document.getElementById('post-stat-error').innerText = stats.error || 0;
-      } catch (e) {}
+      } catch (e) {} finally { postStatsInFlight = false; }
     }
 
+    let profilePostsInFlight = false;
+    let lastPostsPayload = null;
     async function loadProfilePosts() {
+      if (profilePostsInFlight) return;
+      profilePostsInFlight = true;
       let url = '/api/profile-posts?limit=100&';
       if (currentPostFilterStatus) url += `status=${currentPostFilterStatus}&`;
 
       try {
         const res = await fetch(url);
         const data = await res.json();
+        const posts = data.posts || [];
+
+        // Só re-renderiza se os dados mudaram (evita flicker/perda de scroll no polling)
+        const payload = JSON.stringify(posts);
+        if (payload === lastPostsPayload) return;
+        lastPostsPayload = payload;
+
         const tbody = document.getElementById('table-posts-body');
         tbody.innerHTML = '';
 
-        const posts = data.posts || [];
         if (posts.length === 0) {
           tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">Nenhum post catalogado encontrado.</td></tr>`;
           return;
@@ -920,7 +933,7 @@
           if (isVideo) {
             thumbMedia = `<div class="relative w-12 h-12 rounded-lg bg-blue-950/60 border border-blue-800/60 overflow-hidden flex items-center justify-center text-blue-400 group-hover:scale-105 transition"><i data-lucide="play-circle" class="w-6 h-6"></i></div>`;
           } else if (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || mediaUrl.includes('.fbcdn.net'))) {
-            thumbMedia = `<img src="${mediaUrl}" class="w-12 h-12 object-cover rounded-lg border border-slate-800 group-hover:scale-105 transition" onerror="this.onerror=null; this.src='https://placehold.co/100x100/0f172a/64748b?text=IMG';" />`;
+            thumbMedia = `<img src="${escHtml(mediaUrl)}" class="w-12 h-12 object-cover rounded-lg border border-slate-800 group-hover:scale-105 transition" onerror="this.onerror=null; this.src='https://placehold.co/100x100/0f172a/64748b?text=IMG';" />`;
           } else {
             thumbMedia = `<div class="w-12 h-12 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400"><i data-lucide="file-text" class="w-5 h-5"></i></div>`;
           }
@@ -929,27 +942,27 @@
           tr.className = 'hover:bg-slate-900/80 transition group';
           tr.innerHTML = `
             <td class="p-2.5">
-              <div class="cursor-pointer" onclick="openPostPreviewModal('${p.post_id}')">
+              <div class="cursor-pointer" onclick="openPostPreviewModal('${escHtml(p.post_id)}')">
                 ${thumbMedia}
               </div>
             </td>
-            <td class="p-2.5 font-mono text-slate-300 font-bold text-xs min-w-[160px] max-w-[200px] truncate" title="${p.post_id}">${p.post_id}</td>
+            <td class="p-2.5 font-mono text-slate-300 font-bold text-xs min-w-[160px] max-w-[200px] truncate" title="${escHtml(p.post_id)}">${escHtml(p.post_id)}</td>
             <td class="p-2.5 font-semibold text-xs whitespace-nowrap">${isVideo ? '<span class="text-blue-400">📹 Vídeo</span>' : '<span class="text-slate-400">🖼️ Imagem</span>'}</td>
             <td class="p-2.5 max-w-xs text-slate-300">
-              <div class="truncate font-semibold text-slate-200 cursor-pointer hover:text-blue-400 transition" onclick="openPostPreviewModal('${p.post_id}')" title="${p.post_url}">${p.post_text_preview || p.post_url}</div>
+              <div class="truncate font-semibold text-slate-200 cursor-pointer hover:text-blue-400 transition" onclick="openPostPreviewModal('${escHtml(p.post_id)}')" title="${escHtml(p.post_url)}">${escHtml(p.post_text_preview || p.post_url)}</div>
               <div class="text-[10px] text-slate-500 truncate">${dateStr}</div>
             </td>
             <td class="p-2.5">${statusBadge}</td>
             <td class="p-2.5 whitespace-nowrap">
               <div class="flex items-center gap-1.5">
-                <button onclick="openPostPreviewModal('${p.post_id}')" class="px-2.5 py-1 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-700 flex items-center gap-1">
+                <button onclick="openPostPreviewModal('${escHtml(p.post_id)}')" class="px-2.5 py-1 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-700 flex items-center gap-1">
                   <i data-lucide="eye" class="w-3.5 h-3.5"></i> Ver
                 </button>
-                <button onclick="downloadSinglePostAction('${p.post_id}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-sm">
+                <button onclick="downloadSinglePostAction('${escHtml(p.post_id)}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-sm">
                   <i data-lucide="download" class="w-3.5 h-3.5"></i> Baixar
                 </button>
                 ${p.status !== 'downloaded' ? `
-                <button onclick="deletePostAction('${p.post_id}')" class="px-2 py-1 bg-rose-950/50 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold transition border border-rose-800/50 flex items-center gap-1" title="Excluir Post">
+                <button onclick="deletePostAction('${escHtml(p.post_id)}')" class="px-2 py-1 bg-rose-950/50 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold transition border border-rose-800/50 flex items-center gap-1" title="Excluir Post">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 </button>
                 ` : ''}
@@ -960,7 +973,7 @@
         });
         lucide.createIcons();
         loadPostStats();
-      } catch (e) {}
+      } catch (e) {} finally { profilePostsInFlight = false; }
     }
 
     async function deletePostAction(postId) {
@@ -1034,8 +1047,8 @@
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[360px] overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">`;
           items.forEach((m, idx) => {
             gridHtml += `
-              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${m.url}', 'Foto ${idx+1}/${items.length} - ${escHtml(m.filename || post.post_id)}')">
-                <img src="${m.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/300x300/0f172a/64748b?text=IMG';">
+              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${escHtml(m.url)}', 'Foto ${idx+1}/${items.length} - ${escHtml(m.filename || post.post_id)}')">
+                <img src="${escHtml(m.url)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/300x300/0f172a/64748b?text=IMG';">
                 <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
                   ${idx+1}/${items.length}
                 </div>
@@ -1049,14 +1062,14 @@
 
           if (post.post_type === 'image' || (mediaUrl && (mediaUrl.includes('.jpg') || mediaUrl.includes('.png') || (mediaUrl.includes('.fbcdn.net') && !mediaUrl.includes('.mp4'))))) {
             mediaContainer.innerHTML = `
-              <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner cursor-zoom-in" onclick="openLightbox('${mediaUrl}', 'Post ${post.post_id}')">
-                <img src="${mediaUrl}" alt="Preview" class="max-h-[400px] w-auto object-contain rounded-xl shadow-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Preview+indisponivel';" />
+              <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner cursor-zoom-in" onclick="openLightbox('${escHtml(mediaUrl)}', 'Post ${escHtml(post.post_id)}')">
+                <img src="${escHtml(mediaUrl)}" alt="Preview" class="max-h-[400px] w-auto object-contain rounded-xl shadow-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Preview+indisponivel';" />
               </div>`;
           } else if (post.post_type === 'video' || (mediaUrl && mediaUrl.includes('.mp4'))) {
             mediaContainer.innerHTML = `
               <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 shadow-inner">
                 <video controls autoplay muted class="max-h-[400px] w-full rounded-xl shadow-2xl">
-                  <source src="${mediaUrl}" type="video/mp4">
+                  <source src="${escHtml(mediaUrl)}" type="video/mp4">
                   Seu navegador não suporta vídeos.
                 </video>
               </div>`;
@@ -1231,12 +1244,12 @@
               ${statusBadge}
             </div>
             <div>
-              <h3 class="text-sm font-bold text-white group-hover:text-blue-400 transition line-clamp-2 leading-snug">${title}</h3>
+              <h3 class="text-sm font-bold text-white group-hover:text-blue-400 transition line-clamp-2 leading-snug">${escHtml(title)}</h3>
               ${authorName ? `<div class="mt-0.5">${authorName}</div>` : ''}
             </div>
-            <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">${resumo}</p>
+            <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">${escHtml(resumo)}</p>
             <div class="flex flex-wrap gap-1.5 pt-1">
-              ${ferramentas.slice(0, 3).map(f => `<span class="px-2 py-0.5 rounded bg-slate-950 text-[10px] font-medium text-slate-300 border border-slate-800">${f}</span>`).join('')}
+              ${ferramentas.slice(0, 3).map(f => `<span class="px-2 py-0.5 rounded bg-slate-950 text-[10px] font-medium text-slate-300 border border-slate-800">${escHtml(f)}</span>`).join('')}
             </div>
           </div>
 
@@ -1332,8 +1345,8 @@
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full p-2 max-h-80 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800">`;
           savedFrames.forEach((f, idx) => {
             gridHtml += `
-              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${f.url}', 'Slide ${idx+1}/${savedFrames.length} - ${escHtml(f.filename || '')}')">
-                <img src="${f.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/400x400/0f172a/64748b?text=Slide+Indisponivel';">
+              <div class="relative group rounded-lg overflow-hidden border border-slate-800 bg-slate-900 aspect-square cursor-pointer hover:border-purple-500 transition" onclick="openLightbox('${escHtml(f.url)}', 'Slide ${idx+1}/${savedFrames.length} - ${escHtml(f.filename || '')}')">
+                <img src="${escHtml(f.url)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-200" onerror="this.onerror=null; this.src='https://placehold.co/400x400/0f172a/64748b?text=Slide+Indisponivel';">
                 <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
                   ${idx+1}/${savedFrames.length}
                 </div>
@@ -1345,8 +1358,8 @@
         } else if (input.media_url) {
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           mediaContainer.innerHTML = input.type === 'video' ?
-            `<video controls src="${input.media_url}" class="w-full h-full object-contain"></video>` :
-            `<img src="${input.media_url}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${input.media_url}', '${escHtml(knowledge.titulo_estrategia || '')}')" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Imagem+Indisponivel';">`;
+            `<video controls src="${escHtml(input.media_url)}" class="w-full h-full object-contain"></video>` :
+            `<img src="${escHtml(input.media_url)}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${escHtml(input.media_url)}', '${escHtml(knowledge.titulo_estrategia || '')}')" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Imagem+Indisponivel';">`;
         } else {
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           let fallbackHtml = `
@@ -1425,9 +1438,9 @@
         if (frame && frame.url) {
           frameButtonHtml = `
             <div class="flex items-center gap-2 pt-0.5">
-              <button type="button" onclick="openLightbox('${frame.url}', 'Quadro Passo ${idx+1}: ${escHtml(frame.filename || '')}')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
+              <button type="button" onclick="openLightbox('${escHtml(frame.url)}', 'Quadro Passo ${idx+1}: ${escHtml(frame.filename || '')}')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
                 <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                <span>Ver Tela / Frame (${frame.filename || 'Quadro'})</span>
+                <span>Ver Tela / Frame (${escHtml(frame.filename || 'Quadro')})</span>
               </button>
             </div>
           `;
@@ -1436,7 +1449,7 @@
         div.innerHTML = `
           <div class="flex items-start gap-3">
             <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})" class="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 cursor-pointer">
-            <label class="text-xs leading-relaxed cursor-pointer font-medium flex-1">${stepText}</label>
+            <label class="text-xs leading-relaxed cursor-pointer font-medium flex-1">${escHtml(stepText)}</label>
           </div>
           ${frameButtonHtml}
         `;
@@ -1447,16 +1460,21 @@
 
     async function toggleStep(stepIndex) {
       if (!activeBasename) return;
+      const checkbox = document.querySelectorAll('#modal-steps-container input[type="checkbox"]')[stepIndex];
       try {
         const res = await fetch(`/api/strategies/${encodeURIComponent(activeBasename)}/step`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ step_index: stepIndex })
         });
+        if (!res.ok) throw new Error(`Falha ao salvar passo (HTTP ${res.status})`);
         const data = await res.json();
         document.getElementById('modal-select-status').value = data.status;
         loadStrategies();
-      } catch (err) {}
+      } catch (err) {
+        console.error('Erro ao alternar passo:', err);
+        if (checkbox) checkbox.checked = !checkbox.checked;
+      }
     }
 
     async function updateStrategyStatus() {
@@ -1485,10 +1503,10 @@
         div.className = 'bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1';
         div.innerHTML = `
           <div class="flex justify-between text-[10px] text-slate-400">
-            <span class="font-semibold text-amber-400">${c.author || 'Usuário'}</span>
+            <span class="font-semibold text-amber-400">${escHtml(c.author || 'Usuário')}</span>
             <span>${dateStr}</span>
           </div>
-          <p class="text-slate-300 leading-snug">${c.text}</p>
+          <p class="text-slate-300 leading-snug">${escHtml(c.text)}</p>
         `;
         container.appendChild(div);
       });
@@ -1507,9 +1525,12 @@
         });
         if (res.ok) {
           input.value = '';
-          openDetailModal(activeBasename);
+          // Atualiza apenas a lista de comentários, sem recarregar o modal inteiro (mantém aba e scroll)
+          const resGet = await fetch(`/api/strategies/${encodeURIComponent(activeBasename)}`);
+          const item = await resGet.json();
+          renderComments((item.user_implementation || {}).comments || []);
         }
-      } catch (err) {}
+      } catch (err) { console.error('Erro ao adicionar comentário:', err); }
     }
 
     async function loadEvents() {
@@ -1536,12 +1557,12 @@
           tr.className = ev.status === 'error' ? 'bg-rose-950/20 hover:bg-rose-950/30' : 'hover:bg-slate-800/40';
           tr.innerHTML = `
             <td class="p-3 text-slate-400 whitespace-nowrap">${dateStr}</td>
-            <td class="p-3 font-semibold ${ev.source === 'pipeline' ? 'text-blue-400' : 'text-emerald-400'}">${ev.source}</td>
-            <td class="p-3 font-mono font-bold text-slate-200">${ev.step}</td>
+            <td class="p-3 font-semibold ${ev.source === 'pipeline' ? 'text-blue-400' : 'text-emerald-400'}">${escHtml(ev.source)}</td>
+            <td class="p-3 font-mono font-bold text-slate-200">${escHtml(ev.step)}</td>
             <td class="p-3">${statusBadge}</td>
             <td class="p-3">
               <div class="flex items-center justify-between gap-2">
-                <span class="truncate max-w-xs ${ev.status === 'error' ? 'text-rose-300 font-semibold' : ''}">${ev.message}</span>
+                <span class="truncate max-w-xs ${ev.status === 'error' ? 'text-rose-300 font-semibold' : ''}">${escHtml(ev.message)}</span>
                 ${ev.error_details ? `<button onclick="showErrorDetail('${encodeURIComponent(ev.message)}', '${encodeURIComponent(ev.error_details)}')" class="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-semibold">Ver Erro</button>` : ''}
               </div>
             </td>
@@ -1568,7 +1589,7 @@
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-blue-600 hover:text-white text-slate-300 border border-slate-800 text-[11px] font-medium transition flex items-center gap-1.5 shadow-sm';
-          btn.innerHTML = `<i data-lucide="user" class="w-3 h-3 text-blue-400"></i><span>${p.profile_name || p.target_url}</span>`;
+          btn.innerHTML = `<i data-lucide="user" class="w-3 h-3 text-blue-400"></i><span>${escHtml(p.profile_name || p.target_url)}</span>`;
           btn.onclick = () => {
             document.getElementById('scraper-url').value = p.target_url;
             if (p.last_max_scrolls) document.getElementById('scraper-max-scrolls').value = p.last_max_scrolls;
@@ -1754,7 +1775,12 @@
           lblRunning.innerText = `Parar ${data.name || 'Execução'}`;
 
           if (data.logs.length > 0) {
-            terminal.innerHTML = data.logs.map(l => `<p>${l}</p>`).join('');
+            terminal.innerHTML = '';
+            data.logs.forEach(l => {
+              const p = document.createElement('p');
+              p.textContent = l;
+              terminal.appendChild(p);
+            });
             terminal.scrollTop = terminal.scrollHeight;
           }
           // Atualizar lista de posts e contadores em tempo real enquanto roda
@@ -1937,10 +1963,6 @@
         btn?.classList.remove('opacity-50', 'pointer-events-none');
       }
     }
-
-    function escHtml(str) {
-      return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
   </script>
 
   <!-- PAINEL LATERAL DE CONFIGURAÇÕES -->
@@ -1989,8 +2011,8 @@
       const filtered = q ? allConfigs.filter(c =>
         c.label.toLowerCase().includes(q) ||
         c.key.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.value.toLowerCase().includes(q)
+        String(c.description ?? '').toLowerCase().includes(q) ||
+        String(c.value ?? '').toLowerCase().includes(q)
       ) : allConfigs;
       renderConfigGroups(filtered);
     }
@@ -2178,7 +2200,7 @@
         const acoesHtml = (t.acoes_praticas || []).map(a => {
           const acaoText = typeof a === 'object' ? a.acao : a;
           const origem = typeof a === 'object' ? a.origem_basename : null;
-          const badgeOrigem = origem ? `<button onclick="openDetailModal('${origem}')" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-cyan-400 border border-slate-700 transition" title="Ver Mídia de Origem"><i data-lucide="file-text" class="w-3 h-3 inline mr-1"></i>${escHtml(origem)}</button>` : '';
+          const badgeOrigem = origem ? `<button onclick="openDetailModal('${escHtml(origem)}')" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-cyan-400 border border-slate-700 transition" title="Ver Mídia de Origem"><i data-lucide="file-text" class="w-3 h-3 inline mr-1"></i>${escHtml(origem)}</button>` : '';
 
           return `
             <li class="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-start justify-between gap-3 hover:border-slate-700 transition">
@@ -2257,8 +2279,9 @@
       pillars.forEach(p => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-800/40 transition';
-        const kwBadges = (p.keywords || []).slice(0, 5).map(k => `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 border border-slate-700">${escHtml(k)}</span>`).join(' ');
-        const kwMore = p.keywords.length > 5 ? `<span class="text-[10px] text-slate-500">+${p.keywords.length - 5}</span>` : '';
+        const kws = p.keywords || [];
+        const kwBadges = kws.slice(0, 5).map(k => `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 border border-slate-700">${escHtml(k)}</span>`).join(' ');
+        const kwMore = kws.length > 5 ? `<span class="text-[10px] text-slate-500">+${kws.length - 5}</span>` : '';
 
         tr.innerHTML = `
           <td class="px-4 py-3 text-center font-semibold text-slate-400">${p.ordem || 1}</td>

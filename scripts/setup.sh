@@ -16,7 +16,7 @@ PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 echo -e "${BLUE}=== Iniciando a configuração do PipelineFace ===${NC}"
 
 # 1. Verificar pré-requisitos
-echo -e "\n${BLUE}[1/7] Verificando pré-requisitos...${NC}"
+echo -e "\n${BLUE}[1/6] Verificando pré-requisitos...${NC}"
 for cmd in podman podman-compose; do
     if ! command -v "$cmd" &> /dev/null; then
         echo -e "${RED}Erro: $cmd não está instalado.${NC}"
@@ -34,19 +34,13 @@ echo -e "${GREEN}✅ Pré-requisitos (Podman e Ollama) validados.${NC}"
 
 
 # 2. Criar diretórios
-echo -e "\n${BLUE}[2/7] Criando diretórios...${NC}"
+echo -e "\n${BLUE}[2/6] Criando diretórios...${NC}"
 cd "${PROJECT_ROOT}"
 mkdir -p data/{input/{videos,images,metadata},output,processing/{audio,frames},scraper/session}
-mkdir -p n8n-data postgres-data
 echo -e "${GREEN}✅ Diretórios criados.${NC}"
 
-# 3. Permissões
-echo -e "\n${BLUE}[3/7] Ajustando permissões...${NC}"
-podman unshare chown -R 1000:1000 "${PROJECT_ROOT}/n8n-data" 2>/dev/null || true
-echo -e "${GREEN}✅ Permissões ajustadas.${NC}"
-
-# 4. Configurar Ollama do host para aceitar conexões dos containers
-echo -e "\n${BLUE}[4/7] Configurando Ollama do host...${NC}"
+# 3. Configurar Ollama do host para aceitar conexões dos containers
+echo -e "\n${BLUE}[3/6] Configurando Ollama do host...${NC}"
 
 # Verificar se Ollama está rodando
 if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -71,8 +65,8 @@ if echo "$OLLAMA_HOST_BIND" | grep -q "127.0.0.1"; then
     echo ""
 fi
 
-# 5. Baixar modelos no Ollama do host
-echo -e "\n${BLUE}[5/7] Baixando modelos de IA no Ollama do host...${NC}"
+# 4. Baixar modelos no Ollama do host
+echo -e "\n${BLUE}[4/6] Baixando modelos de IA no Ollama do host...${NC}"
 
 pull_model() {
     local model=$1
@@ -92,12 +86,9 @@ pull_model "qwen2.5:3b"
 echo -e "${GREEN}✅ Modelos prontos (ou baixando em background no host).${NC}"
 
 
-# 6. Build e start dos containers
-echo -e "\n${BLUE}[6/7] Construindo e iniciando containers...${NC}"
+# 5. Build e start dos containers
+echo -e "\n${BLUE}[5/6] Construindo e iniciando containers...${NC}"
 cd "${PROJECT_ROOT}"
-
-echo "📦 Construindo imagem N8N (com FFmpeg)..."
-podman build -t pipelineface-n8n:latest -f Containerfile.n8n .
 
 echo "📦 Construindo imagem Scraper (Playwright + yt-dlp)..."
 podman build -t pipelineface-scraper:latest -f scraper/Containerfile ./scraper
@@ -107,8 +98,8 @@ podman-compose up -d
 
 echo -e "${GREEN}✅ Containers iniciados.${NC}"
 
-# 7. Health checks
-echo -e "\n${BLUE}[7/7] Verificando serviços...${NC}"
+# 6. Health checks
+echo -e "\n${BLUE}[6/6] Verificando serviços...${NC}"
 
 wait_for() {
     local name=$1 url=$2 retries=15
@@ -126,7 +117,6 @@ wait_for() {
 
 wait_for "Ollama (host)" "http://localhost:11434/api/tags"
 wait_for "Whisper" "http://localhost:9000/"
-wait_for "N8N" "http://localhost:5678/healthz"
 
 # Resumo
 echo ""
@@ -134,7 +124,6 @@ echo -e "${GREEN}============================================${NC}"
 echo -e "${GREEN}🎉 Setup concluído com sucesso!             ${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
-echo -e "  📊 N8N:          http://localhost:5678"
 echo -e "  🧠 Ollama (host): http://localhost:11434"
 echo -e "  🎙️  Whisper:       http://localhost:9000"
 echo ""
@@ -144,6 +133,4 @@ echo ""
 echo -e "${YELLOW}Próximos passos:${NC}"
 echo -e "  1. Login no Facebook:  ./scripts/scrape.sh --login"
 echo -e "  2. Coletar perfil:     ./scripts/scrape.sh --target https://facebook.com/perfil"
-echo -e "  3. Abrir N8N:          http://localhost:5678"
-echo -e "  4. Importar workflow:  n8n-workflows/facebook-knowledge-extraction.json"
 echo ""

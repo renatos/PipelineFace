@@ -57,7 +57,7 @@ MongoDB is the primary persistence layer (`mongodb://localhost:27017`, Database:
 - **`seo_pillars`**: Taxonomy pillars for SEO classification.
   - Fields: `id` (unique slug), `titulo`, `keywords` (array of strings), `ordem`, `ativo`, `created_at`, `updated_at`.
 - **`pipeline_runs`**: Execution runs history for pipeline and scraper.
-  - Fields: `run_id` (unique), `source` (`pipeline`|`scraper`), `status` (`in_progress`|`completed`|`error`), `started_at`, `finished_at`, `total_files`, `success_files`, `error_files`, `error_count`.
+  - Fields: `run_id` (unique), `source` (`pipeline`|`scraper`), `status` (`in_progress`|`completed`|`completed_with_errors`|`error`), `started_at`, `finished_at`, `total_files`, `success_files`, `error_files`, `error_count`.
 - **`execution_events`**: Real-time execution logs and telemetry events.
   - Fields: `id`, `run_id`, `source`, `step`, `status` (`info`|`in_progress`|`completed`|`error`), `filename`, `target_url`, `message`, `metrics`, `error_details`, `created_at`.
 - **`target_profiles`**: Scraped Facebook profiles history.

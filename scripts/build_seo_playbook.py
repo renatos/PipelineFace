@@ -80,6 +80,18 @@ def carregar_taxonomia_completa(db) -> dict:
     return taxonomia
 
 
+_mongo_client = None
+
+
+def get_mongo_client() -> MongoClient:
+    """Retorna um MongoClient único reutilizado em todo o script."""
+    global _mongo_client
+    if _mongo_client is None:
+        mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+        _mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+    return _mongo_client
+
+
 def query_ollama(prompt: str, system_prompt: str = None) -> str:
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
     text_model = os.environ.get("TEXT_MODEL", "qwen2.5:3b")
@@ -146,16 +158,21 @@ def deduplicar_passos_com_origem(passos_com_origem: List[Dict[str, str]]) -> Lis
 
 
 def build_playbook():
-    mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
+    client = get_mongo_client()
     db = client["pipelineface"]
 
-    strategies = list(db["seo_knowledge"].find({
-        "$or": [
-            {"seo_knowledge.quality_grade": {"$in": ["A", "B"]}},
-            {"seo_knowledge._quality_grade": {"$in": ["A", "B"]}}
-        ]
-    }))
+    projection = {
+        "basename": 1,
+        "seo_knowledge.titulo_estrategia": 1,
+        "seo_knowledge.resumo_executivo": 1,
+        "seo_knowledge.conceitos_mencionados": 1,
+        "seo_knowledge.ferramentas_e_telas_utilizadas": 1,
+        "seo_knowledge.passo_a_passo_detalhado": 1,
+    }
+    strategies = list(db["seo_knowledge"].find(
+        {"seo_knowledge.quality_grade": {"$in": ["A", "B"]}},
+        projection
+    ))
 
     if not strategies:
         print("⚠️ Nenhum conhecimento com Grade A ou B encontrado em seo_knowledge.")
@@ -178,7 +195,7 @@ def build_playbook():
 
         pilar_encontrado = None
         for pilar_id, meta in taxonomia_pilares.items():
-            if any(kw in texto_completo for kw in meta["keywords"]):
+            if any(re.search(rf'\b{re.escape(kw)}\b', texto_completo, re.IGNORECASE) for kw in meta["keywords"]):
                 pilar_encontrado = pilar_id
                 break
 
@@ -227,12 +244,12 @@ def build_playbook():
 
     prompt = f"### RESUMO DOS PILARES EXTRAÍDOS PARA SÍNTESE:\n{json.dumps(summary_payload, ensure_ascii=False, indent=2)}"
     
-    llm_res_str = query_ollama(prompt, system_prompt=system_prompt)
     try:
+        llm_res_str = query_ollama(prompt, system_prompt=system_prompt)
         llm_data = json.loads(llm_res_str)
         pilares_meta = {p["id_pilar"]: p for p in llm_data.get("pilares_priorizados", [])}
     except Exception as e:
-        print(f"⚠️ Erro ao processar síntese do LLM, aplicando fallbacks: {e}")
+        print(f"⚠️ Erro ao consultar/processar síntese do LLM (Ollama indisponível?), aplicando fallbacks: {e}")
         pilares_meta = {}
 
     print("🛠️  [ASSEMBLE] Montando Playbook final combinando dados reais do MongoDB...")

@@ -37,10 +37,10 @@ import time
 import hashlib
 import uuid
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pathlib import Path
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -179,14 +179,17 @@ class FacebookScraper:
         
         # Histórico persistente de downloads para evitar re-download
         self.history_file = self.output_metadata / "download_history.json"
+        self._mongo_client = None
         self.downloaded_history = self._load_download_history()
 
     def _init_mongo_client(self):
+        if self._mongo_client is not None:
+            return self._mongo_client["pipelineface"]
         try:
             from pymongo import MongoClient
             mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-            return client["pipelineface"]
+            self._mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+            return self._mongo_client["pipelineface"]
         except Exception:
             return None
 
@@ -233,7 +236,9 @@ class FacebookScraper:
             "total_items": len(self.downloaded_history),
             "downloaded_urls": list(self.downloaded_history)
         }
-        self.history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_file = self.history_file.with_name(self.history_file.name + ".part")
+        tmp_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp_file, self.history_file)
 
     def _mark_as_downloaded(self, url: str, filename: str = None, media_type: str = None, post_id: str = None, media_id: str = None):
         """Marca uma URL/Mídia como baixada no MongoDB e no histórico local."""
@@ -270,7 +275,7 @@ class FacebookScraper:
         """Verifica se a URL ou arquivo já foi baixado e EXISTE no disco."""
         if target_filepath:
             return target_filepath.exists() and target_filepath.stat().st_size > 0
-        return False
+        return url in self.downloaded_history or self._url_hash(url) in self.downloaded_history
 
     def _extract_post_and_media_ids(self, url: str) -> tuple[Optional[str], Optional[str]]:
         """
@@ -333,7 +338,9 @@ class FacebookScraper:
 
         # Se for uma URL direta de imagem CDN ou mídia sem id explicito no FB
         if "scontent" in url or "fbcdn" in url:
-            return hashlib.md5(url.encode()).hexdigest()[:16]
+            # Remover query string (assinaturas de CDN mudam a cada sessão)
+            canonical_url = url.split("?", 1)[0]
+            return hashlib.md5(canonical_url.encode()).hexdigest()[:16]
 
         return None
 
@@ -387,6 +394,7 @@ class FacebookScraper:
                 
                 # Sobrescreve com o formato correto do Playwright
                 session_path.write_text(json.dumps(playwright_state, ensure_ascii=False, indent=2))
+                os.chmod(session_path, 0o600)
                 console.print("[green]✅ Cookies convertidos com sucesso![/green]")
             return True
         except Exception as e:
@@ -426,7 +434,9 @@ class FacebookScraper:
                 input("\nPressione [ENTER] após ter feito login com sucesso no navegador para salvar...")
 
                 context.storage_state(path=str(session_path))
+                os.chmod(session_path, 0o600)
                 console.print(f"[bold green]✅ Login concluído! Sessão salva em {session_path}[/bold green]")
+                browser.close()
                 return True
             except Exception as e:
                 console.print(f"[yellow]⚠️  Navegador visual indisponível (Erro: {str(e)[:80]}).[/yellow]")
@@ -467,7 +477,7 @@ class FacebookScraper:
                 page.wait_for_timeout(6000)
 
                 # Checar se pede Código 2FA (Checkpoint)
-                if "checkpoint" in page.url or page.locator('input[id="approvals_code"]').is_visible() or page.locator('input[type="text"]').is_visible():
+                if "checkpoint" in page.url or page.locator('input[id="approvals_code"]').is_visible():
                     console.print("[bold yellow]🔑 Autenticação de 2 Fatores (2FA) detectada![/bold yellow]")
                     code = input("Digite o código de verificação enviado/gerado do 2FA: ")
 
@@ -491,6 +501,7 @@ class FacebookScraper:
 
                 if has_user_cookie or "feed" in page.url or page.locator('a[href*="/me/"]').is_visible():
                     context.storage_state(path=str(session_path))
+                    os.chmod(session_path, 0o600)
                     console.print(f"[bold green]✅ Login realizado com sucesso! Sessão salva em {session_path}[/bold green]")
                     return True
                 else:
@@ -802,7 +813,7 @@ class FacebookScraper:
                 for scroll_num in range(1, self.max_scrolls + 1):
                     # Scroll para baixo
                     page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
-                    time.sleep(SCROLL_PAUSE)
+                    time.sleep(self.scroll_pause)
 
                     # Coletar vídeos
                     if not self.only_images:
@@ -1004,7 +1015,9 @@ class FacebookScraper:
                         if not primary_post_id and (unit_images or unit_videos):
                             first_url = self._clean_facebook_url(unit_images[0]["url"] if unit_images else unit_videos[0])
                             _, img_fbid = self._extract_post_and_media_ids(first_url)
-                            primary_post_id = img_fbid or f"card_{hashlib.md5(first_url.encode()).hexdigest()[:16]}"
+                            # Canonicalizar URLs de CDN (query string muda a cada sessão)
+                            hash_url = first_url.split("?", 1)[0] if ("scontent" in first_url or "fbcdn" in first_url) else first_url
+                            primary_post_id = img_fbid or f"card_{hashlib.md5(hash_url.encode()).hexdigest()[:16]}"
                             primary_url = first_url
 
                         # Se encontrou um post_id para o card e existem imagens/vídeos nele
@@ -1043,35 +1056,51 @@ class FacebookScraper:
                                 if db is not None:
                                     try:
                                         existing_post = db["profile_posts"].find_one({"post_id": primary_post_id})
-                                        existing_medias = existing_post.get("media_items", []) if existing_post else []
-                                        
-                                        # Mesclar mídias sem duplicar media_id
-                                        merged_medias = list(existing_medias)
-                                        for c_item in card_media_items:
-                                            if not any(m.get("media_id") == c_item["media_id"] for m in merged_medias):
-                                                merged_medias.append(c_item)
 
-                                        final_post_type = "album" if len(merged_medias) > 1 else card_post_type
+                                        if self.only_new and existing_post:
+                                            consecutive_existing_count += 1
+                                            if consecutive_existing_count >= 5:
+                                                console.print(f"[bold green]✨ Modo --only-new: {consecutive_existing_count} posts já catalogados no banco encontrados em sequência. Finalizando catalogação de novos posts.[/bold green]")
+                                                stop_scroll_flag = True
+                                                break
+                                            continue
+
+                                        if existing_post:
+                                            existing_medias = existing_post.get("media_items", [])
+                                        else:
+                                            existing_medias = []
+                                            consecutive_existing_count = 0
+
+                                        # Identificar apenas mídias novas (sem duplicar media_id)
+                                        new_media_items = [
+                                            c_item for c_item in card_media_items
+                                            if not any(m.get("media_id") == c_item["media_id"] for m in existing_medias)
+                                        ]
+
+                                        final_post_type = "album" if len(existing_medias) + len(new_media_items) > 1 else card_post_type
+
+                                        update_op = {
+                                            "$set": {
+                                                "profile_url": self.target_url,
+                                                "profile_name": profile_name,
+                                                "post_url": primary_url or self.target_url,
+                                                "post_type": final_post_type,
+                                                "post_text_preview": unit_text or (primary_url[:100] if primary_url else None),
+                                                "scroll_position": scroll_num,
+                                                "updated_at": datetime.now().isoformat()
+                                            },
+                                            "$setOnInsert": {
+                                                "status": "pending",
+                                                "discovered_at": datetime.now().isoformat(),
+                                                "error_message": None
+                                            }
+                                        }
+                                        if new_media_items:
+                                            update_op["$addToSet"] = {"media_items": {"$each": new_media_items}}
 
                                         db["profile_posts"].update_one(
                                             {"post_id": primary_post_id},
-                                            {
-                                                "$set": {
-                                                    "profile_url": self.target_url,
-                                                    "profile_name": profile_name,
-                                                    "post_url": primary_url or self.target_url,
-                                                    "post_type": final_post_type,
-                                                    "media_items": merged_medias,
-                                                    "post_text_preview": unit_text or (primary_url[:100] if primary_url else None),
-                                                    "scroll_position": scroll_num,
-                                                    "updated_at": datetime.now().isoformat()
-                                                },
-                                                "$setOnInsert": {
-                                                    "status": "pending",
-                                                    "discovered_at": datetime.now().isoformat(),
-                                                    "error_message": None
-                                                }
-                                            },
+                                            update_op,
                                             upsert=True
                                         )
                                         if is_new_post:
@@ -1167,30 +1196,30 @@ class FacebookScraper:
                                 
                                 # Filtrar duplicatas por media_id
                                 media_exists = any(m.get("media_id") == media_id for m in existing_medias)
-                                updated_medias = list(existing_medias)
-                                if not media_exists:
-                                    updated_medias.append(media_item)
 
-                                final_post_type = "album" if len(updated_medias) > 1 else post_type
+                                final_post_type = "album" if len(existing_medias) + (0 if media_exists else 1) > 1 else post_type
+
+                                update_op = {
+                                    "$set": {
+                                        "profile_url": self.target_url,
+                                        "profile_name": profile_name,
+                                        "post_url": post_doc["post_url"],
+                                        "post_type": final_post_type,
+                                        "scroll_position": scroll_num,
+                                        "updated_at": datetime.now().isoformat()
+                                    },
+                                    "$setOnInsert": {
+                                        "status": "pending",
+                                        "discovered_at": datetime.now().isoformat(),
+                                        "error_message": None
+                                    }
+                                }
+                                if not media_exists:
+                                    update_op["$addToSet"] = {"media_items": media_item}
 
                                 res = db["profile_posts"].update_one(
                                     {"post_id": post_id},
-                                    {
-                                        "$set": {
-                                            "profile_url": self.target_url,
-                                            "profile_name": profile_name,
-                                            "post_url": post_doc["post_url"],
-                                            "post_type": final_post_type,
-                                            "media_items": updated_medias,
-                                            "scroll_position": scroll_num,
-                                            "updated_at": datetime.now().isoformat()
-                                        },
-                                        "$setOnInsert": {
-                                            "status": "pending",
-                                            "discovered_at": datetime.now().isoformat(),
-                                            "error_message": None
-                                        }
-                                    },
+                                    update_op,
                                     upsert=True
                                 )
                                 if res.upserted_id:
@@ -1282,8 +1311,10 @@ class FacebookScraper:
                 pass
 
         if content_bytes and len(content_bytes) > 1000 and not content_bytes.startswith(b"<!DOCTYPE html") and not content_bytes.startswith(b"<html"):
-            with open(filepath, "wb") as f:
+            tmp_filepath = filepath.with_name(filepath.name + ".part")
+            with open(tmp_filepath, "wb") as f:
                 f.write(content_bytes)
+            os.replace(tmp_filepath, filepath)
             try:
                 from PIL import Image
                 with Image.open(filepath) as img:
@@ -1308,6 +1339,16 @@ class FacebookScraper:
         if db is None:
             console.print("[bold red]❌ Conexão com MongoDB necessária para download de pendentes.[/bold red]")
             return
+
+        # Resetar posts travados em 'downloading' há mais de 1h (ex.: crash anterior),
+        # pois a query abaixo só busca status 'pending'
+        stale_threshold = (datetime.now() - timedelta(hours=1)).isoformat()
+        stale_result = db["profile_posts"].update_many(
+            {"status": "downloading", "updated_at": {"$lt": stale_threshold}},
+            {"$set": {"status": "pending", "updated_at": datetime.now().isoformat()}}
+        )
+        if stale_result.modified_count:
+            console.print(f"[yellow]♻️ {stale_result.modified_count} post(s) travados em 'downloading' resetados para 'pending'.[/yellow]")
 
         if target_post_id:
             pending_docs = list(db["profile_posts"].find(
@@ -1351,125 +1392,130 @@ class FacebookScraper:
             context = browser.new_context(storage_state=str(self._session_path())) if self._has_session() else browser.new_context()
             page = context.new_page()
 
-            for i, post in enumerate(pending_docs, 1):
-                post_id = post["post_id"]
-                media_items = post.get("media_items", [])
-                console.print(f"\n[{i}/{len(pending_docs)}] 📦 Baixando post {post_id} ({len(media_items)} mídia(s))...")
+            try:
+                for i, post in enumerate(pending_docs, 1):
+                    post_id = post["post_id"]
+                    media_items = post.get("media_items", [])
+                    console.print(f"\n[{i}/{len(pending_docs)}] 📦 Baixando post {post_id} ({len(media_items)} mídia(s))...")
 
-                # Atualizar status para downloading
-                db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloading", "updated_at": datetime.now().isoformat()}})
-                send_telemetry_event(self.run_id, "POST_DOWNLOAD_START", status="in_progress", message=f"Baixando post {post_id}", metrics={"post_id": post_id})
+                    # Atualizar status para downloading
+                    db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloading", "updated_at": datetime.now().isoformat()}})
+                    send_telemetry_event(self.run_id, "POST_DOWNLOAD_START", status="in_progress", message=f"Baixando post {post_id}", metrics={"post_id": post_id})
 
-                post_success = True
-                downloaded_files = []
+                    post_success = True
+                    downloaded_files = []
 
-                for idx_m, media in enumerate(media_items, 1):
-                    media_id = media.get("media_id", f"m_{post_id[:16]}_0")
-                    url = media.get("url", "")
-                    media_type = media.get("type", "image")
+                    for idx_m, media in enumerate(media_items, 1):
+                        media_id = media.get("media_id", f"m_{post_id[:16]}_0")
+                        url = media.get("url", "")
+                        media_type = media.get("type", "image")
 
-                    if not url:
-                        continue
+                        if not url:
+                            continue
 
-                    expected_filename = media.get("filename") or self._url_to_filename(url, "mp4" if media_type == "video" else "jpg")
-                    target_dir = self.output_videos if media_type == "video" else self.output_images
-                    target_file = target_dir / expected_filename if expected_filename else None
+                        expected_filename = media.get("filename") or self._url_to_filename(url, "mp4" if media_type == "video" else "jpg")
+                        target_dir = self.output_videos if media_type == "video" else self.output_images
+                        target_file = target_dir / expected_filename if expected_filename else None
 
-                    if self._is_already_downloaded(url, target_filepath=target_file):
-                        console.print(f"  [yellow]⏭️ Mídia já baixada (arquivo existe em disco): {media_id}[/yellow]")
-                        db["profile_posts"].update_one(
-                            {"post_id": post_id, "media_items.media_id": media_id},
-                            {"$set": {"media_items.$.downloaded": True, "updated_at": datetime.now().isoformat()}}
-                        )
-                        continue
+                        if self._is_already_downloaded(url, target_filepath=target_file):
+                            console.print(f"  [yellow]⏭️ Mídia já baixada (arquivo existe em disco): {media_id}[/yellow]")
+                            db["profile_posts"].update_one(
+                                {"post_id": post_id, "media_items.media_id": media_id},
+                                {"$set": {"media_items.$.downloaded": True, "updated_at": datetime.now().isoformat()}}
+                            )
+                            continue
 
-                    if media_type == "video":
-                        if "facebook.com" in url and ("/videos/" in url or "/watch/" in url or "/reel/" in url):
-                            try:
-                                res = subprocess.run(
-                                    [
-                                        "yt-dlp",
-                                        "--cookies", str(cookies_path),
-                                        "--output", str(self.output_videos / "%(title).80s_%(id)s.%(ext)s"),
-                                        "--format", "best[ext=mp4]/best",
-                                        "--no-overwrites",
-                                        "--socket-timeout", "30",
-                                        "--retries", "3",
-                                        url,
-                                    ],
-                                    capture_output=True, text=True, timeout=300
-                                )
-                                if res.returncode == 0:
-                                    filename = f"fb_{self._url_hash(url)}.mp4"
-                                    self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
-                                    downloaded_files.append(filename)
-                                    db["profile_posts"].update_one(
-                                        {"post_id": post_id, "media_items.media_id": media_id},
-                                        {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                        if media_type == "video":
+                            if "facebook.com" in url and ("/videos/" in url or "/watch/" in url or "/reel/" in url):
+                                try:
+                                    res = subprocess.run(
+                                        [
+                                            "yt-dlp",
+                                            "--cookies", str(cookies_path),
+                                            "--output", str(self.output_videos / f"fb_{self._url_hash(url)}.%(ext)s"),
+                                            "--print", "after_move:filename",
+                                            "--format", "best[ext=mp4]/best",
+                                            "--no-overwrites",
+                                            "--socket-timeout", "30",
+                                            "--retries", "3",
+                                            url,
+                                        ],
+                                        capture_output=True, text=True, timeout=300
                                     )
-                                    console.print(f"  [green]✅ Vídeo baixado com sucesso via yt-dlp[/green]")
-                                else:
+                                    if res.returncode == 0:
+                                        printed_lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                                        filename = Path(printed_lines[-1]).name if printed_lines else f"fb_{self._url_hash(url)}.mp4"
+                                        self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
+                                        downloaded_files.append(filename)
+                                        db["profile_posts"].update_one(
+                                            {"post_id": post_id, "media_items.media_id": media_id},
+                                            {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                                        )
+                                        console.print(f"  [green]✅ Vídeo baixado com sucesso via yt-dlp[/green]")
+                                    else:
+                                        post_success = False
+                                        db["profile_posts"].update_one(
+                                            {"post_id": post_id, "media_items.media_id": media_id},
+                                            {"$set": {"media_items.$.download_error": res.stderr[:150], "updated_at": datetime.now().isoformat()}}
+                                        )
+                                except Exception as ex:
                                     post_success = False
-                                    db["profile_posts"].update_one(
-                                        {"post_id": post_id, "media_items.media_id": media_id},
-                                        {"$set": {"media_items.$.download_error": res.stderr[:150], "updated_at": datetime.now().isoformat()}}
-                                    )
-                            except Exception as ex:
-                                post_success = False
-                                console.print(f"  [red]❌ Erro ao baixar vídeo: {ex}[/red]")
-                        else:
-                            try:
-                                import requests
-                                filename = self._url_to_filename(url, "mp4")
-                                filepath = self.output_videos / filename
-                                resp = requests.get(url, timeout=120, stream=True)
-                                if resp.status_code == 200:
-                                    with open(filepath, "wb") as f:
-                                        for chunk in resp.iter_content(chunk_size=8192): f.write(chunk)
-                                    self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
-                                    downloaded_files.append(filename)
-                                    db["profile_posts"].update_one(
-                                        {"post_id": post_id, "media_items.media_id": media_id},
-                                        {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
-                                    )
-                                    console.print(f"  [green]✅ Vídeo direto baixado com sucesso[/green]")
-                                else:
-                                    post_success = False
-                            except Exception as ex:
-                                post_success = False
-                                console.print(f"  [red]❌ Erro HTTP vídeo: {ex}[/red]")
-                    else:
-                        # Imagem
-                        try:
-                            slide_suffix = f"_slide_{idx_m}" if len(media_items) > 1 else ""
-                            filename = f"foto_{post_id}{slide_suffix}_{self._url_hash(url)[:8]}.jpg"
-                            filepath = self.output_images / filename
-                            
-                            if self._download_single_image(page, context, url, filepath):
-                                self._mark_as_downloaded(url, filename=filename, media_type="image", post_id=post_id, media_id=media_id)
-                                downloaded_files.append(filename)
-                                db["profile_posts"].update_one(
-                                    {"post_id": post_id, "media_items.media_id": media_id},
-                                    {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
-                                )
-                                console.print(f"  [green]✅ Imagem válida baixada com sucesso: {filename}[/green]")
+                                    console.print(f"  [red]❌ Erro ao baixar vídeo: {ex}[/red]")
                             else:
+                                try:
+                                    import requests
+                                    filename = self._url_to_filename(url, "mp4")
+                                    filepath = self.output_videos / filename
+                                    resp = requests.get(url, timeout=120, stream=True)
+                                    if resp.status_code == 200:
+                                        tmp_filepath = filepath.with_name(filepath.name + ".part")
+                                        with open(tmp_filepath, "wb") as f:
+                                            for chunk in resp.iter_content(chunk_size=8192): f.write(chunk)
+                                        os.replace(tmp_filepath, filepath)
+                                        self._mark_as_downloaded(url, filename=filename, media_type="video", post_id=post_id, media_id=media_id)
+                                        downloaded_files.append(filename)
+                                        db["profile_posts"].update_one(
+                                            {"post_id": post_id, "media_items.media_id": media_id},
+                                            {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                                        )
+                                        console.print(f"  [green]✅ Vídeo direto baixado com sucesso[/green]")
+                                    else:
+                                        post_success = False
+                                except Exception as ex:
+                                    post_success = False
+                                    console.print(f"  [red]❌ Erro HTTP vídeo: {ex}[/red]")
+                        else:
+                            # Imagem
+                            try:
+                                slide_suffix = f"_slide_{idx_m}" if len(media_items) > 1 else ""
+                                filename = f"foto_{post_id}{slide_suffix}_{self._url_hash(url)[:8]}.jpg"
+                                filepath = self.output_images / filename
+
+                                if self._download_single_image(page, context, url, filepath):
+                                    self._mark_as_downloaded(url, filename=filename, media_type="image", post_id=post_id, media_id=media_id)
+                                    downloaded_files.append(filename)
+                                    db["profile_posts"].update_one(
+                                        {"post_id": post_id, "media_items.media_id": media_id},
+                                        {"$set": {"media_items.$.downloaded": True, "media_items.$.filename": filename, "updated_at": datetime.now().isoformat()}}
+                                    )
+                                    console.print(f"  [green]✅ Imagem válida baixada com sucesso: {filename}[/green]")
+                                else:
+                                    post_success = False
+                                    console.print(f"  [red]❌ Falha ao obter binário de imagem válido para {url[:60]}[/red]")
+                            except Exception as ex:
                                 post_success = False
-                                console.print(f"  [red]❌ Falha ao obter binário de imagem válido para {url[:60]}[/red]")
-                        except Exception as ex:
-                            post_success = False
-                            console.print(f"  [red]❌ Erro ao baixar imagem: {ex}[/red]")
+                                console.print(f"  [red]❌ Erro ao baixar imagem: {ex}[/red]")
 
-                if post_success:
-                    success_count += 1
-                    db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloaded", "updated_at": datetime.now().isoformat()}})
-                    send_telemetry_event(self.run_id, "POST_DOWNLOAD_COMPLETE", status="completed", message=f"Sucesso no download do post {post_id}", metrics={"post_id": post_id, "files": downloaded_files})
-                else:
-                    error_count += 1
-                    db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "error", "error_message": "Falha no download de mídias", "updated_at": datetime.now().isoformat()}})
-                    send_telemetry_event(self.run_id, "POST_DOWNLOAD_ERROR", status="error", message=f"Falha no download do post {post_id}", metrics={"post_id": post_id})
-
-            browser.close()
+                    if post_success:
+                        success_count += 1
+                        db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "downloaded", "updated_at": datetime.now().isoformat()}})
+                        send_telemetry_event(self.run_id, "POST_DOWNLOAD_COMPLETE", status="completed", message=f"Sucesso no download do post {post_id}", metrics={"post_id": post_id, "files": downloaded_files})
+                    else:
+                        error_count += 1
+                        db["profile_posts"].update_one({"post_id": post_id}, {"$set": {"status": "error", "error_message": "Falha no download de mídias", "updated_at": datetime.now().isoformat()}})
+                        send_telemetry_event(self.run_id, "POST_DOWNLOAD_ERROR", status="error", message=f"Falha no download do post {post_id}", metrics={"post_id": post_id})
+            finally:
+                browser.close()
 
         remaining_pending = db["profile_posts"].count_documents({"status": "pending"})
         console.print(f"\n[bold green]✅ Lote finalizado! Sucessos: {success_count}, Erros: {error_count}. Restantes pendentes no banco: {remaining_pending}[/bold green]")
@@ -1565,9 +1611,11 @@ class FacebookScraper:
                     console.print(f"  [{i}/{len(self.collected_videos)}] Baixando vídeo direto: {filename}")
                     resp = requests.get(url, timeout=120, stream=True)
                     if resp.status_code == 200:
-                        with open(filepath, "wb") as f:
+                        tmp_filepath = filepath.with_name(filepath.name + ".part")
+                        with open(tmp_filepath, "wb") as f:
                             for chunk in resp.iter_content(chunk_size=8192):
                                 f.write(chunk)
+                        os.replace(tmp_filepath, filepath)
                         downloaded += 1
                         video["downloaded"] = True
                         video["download_method"] = "direct"
@@ -1620,9 +1668,11 @@ class FacebookScraper:
             try:
                 resp = requests.get(url, timeout=60, stream=True)
                 if resp.status_code == 200:
-                    with open(filepath, "wb") as f:
+                    tmp_filepath = filepath.with_name(filepath.name + ".part")
+                    with open(tmp_filepath, "wb") as f:
                         for chunk in resp.iter_content(chunk_size=8192):
                             f.write(chunk)
+                    os.replace(tmp_filepath, filepath)
                     downloaded += 1
                     img["downloaded"] = True
                     img["download_method"] = "direct"
@@ -1693,6 +1743,7 @@ class FacebookScraper:
             lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expires}\t{name}\t{value}")
  
         output_path.write_text("\n".join(lines))
+        os.chmod(output_path, 0o600)
 
 
     def save_metadata(self):

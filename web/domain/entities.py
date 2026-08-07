@@ -111,7 +111,7 @@ class PipelineRun(BaseModel):
     """Representa uma execução completa do Pipeline ou Scraper identificada por run_id."""
     run_id: str
     source: str  # "pipeline" | "scraper"
-    status: str = "in_progress"  # "in_progress" | "completed" | "error"
+    status: str = "in_progress"  # "in_progress" | "completed" | "completed_with_errors" | "error"
     target_url: Optional[str] = None  # Para execuções do scraper
     started_at: str
     finished_at: Optional[str] = None

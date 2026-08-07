@@ -35,7 +35,7 @@ VIDEO_COUNT=0
 while IFS= read -r file; do
     if [ -n "$file" ]; then
         cp "$file" "${PROJECT_ROOT}/data/input/videos/"
-        ((VIDEO_COUNT++))
+        ((VIDEO_COUNT+=1))
     fi
 done <<< "$(find "$TEMP_DIR" -type f \( -iname \*.mp4 -o -iname \*.mov -o -iname \*.avi -o -iname \*.webm \))"
 
@@ -44,7 +44,7 @@ IMAGE_COUNT=0
 while IFS= read -r file; do
     if [ -n "$file" ]; then
         cp "$file" "${PROJECT_ROOT}/data/input/images/"
-        ((IMAGE_COUNT++))
+        ((IMAGE_COUNT+=1))
     fi
 done <<< "$(find "$TEMP_DIR" -type f \( -iname \*.jpg -o -iname \*.jpeg -o -iname \*.png -o -iname \*.gif -o -iname \*.webp \))"
 
@@ -53,7 +53,7 @@ JSON_COUNT=0
 while IFS= read -r file; do
     if [ -n "$file" ]; then
         cp "$file" "${PROJECT_ROOT}/data/input/metadata/"
-        ((JSON_COUNT++))
+        ((JSON_COUNT+=1))
     fi
 done <<< "$(find "$TEMP_DIR" -type f -iname \*.json)"
 

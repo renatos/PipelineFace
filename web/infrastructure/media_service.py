@@ -7,8 +7,25 @@ Serviço responsável por servir imagens e realizar o streaming HTTP Range de v�
 import mimetypes
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+
+_SAFE_NAME_RE = re.compile(r"^[\w.\-]+$")
+
+
+def _validate_path_param(value: str):
+    if not value or value in (".", "..") or not _SAFE_NAME_RE.fullmatch(value):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+
+def _is_direct_image_url(url: str) -> bool:
+    """Retorna True apenas para URLs de imagem direta da CDN do Facebook."""
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return False
+    return "fbcdn.net" in host or "scontent" in host
 
 
 class MediaStreamingService:
@@ -18,6 +35,7 @@ class MediaStreamingService:
         self.output_frames_dir = Path(output_frames_dir)
 
     def stream_video(self, filename: str, request: Request):
+        _validate_path_param(filename)
         video_path = self.input_videos_dir / filename
         if not video_path.exists():
             raise HTTPException(status_code=404, detail="Vídeo não encontrado")
@@ -55,6 +73,7 @@ class MediaStreamingService:
         return FileResponse(video_path, media_type="video/mp4")
 
     def serve_input_image(self, filename: str, mongo_db=None):
+        _validate_path_param(filename)
         image_path = self.input_images_dir / filename
         if image_path.exists():
             mime, _ = mimetypes.guess_type(str(image_path))
@@ -70,7 +89,7 @@ class MediaStreamingService:
                 )
                 if post_doc and "media_items" in post_doc and post_doc["media_items"]:
                     fb_url = post_doc["media_items"][0].get("url") or post_doc.get("post_url")
-                    if fb_url:
+                    if fb_url and _is_direct_image_url(fb_url):
                         return RedirectResponse(url=fb_url, status_code=307)
 
                 # 2. Buscar na coleção seo_knowledge por input_file.filename
@@ -79,7 +98,9 @@ class MediaStreamingService:
                     {"input_file.url": 1}
                 )
                 if strat_doc and strat_doc.get("input_file", {}).get("url"):
-                    return RedirectResponse(url=strat_doc["input_file"]["url"], status_code=307)
+                    input_url = strat_doc["input_file"]["url"]
+                    if _is_direct_image_url(input_url):
+                        return RedirectResponse(url=input_url, status_code=307)
             except Exception:
                 pass
 
@@ -87,6 +108,8 @@ class MediaStreamingService:
         return Response(content=placeholder_svg, media_type="image/svg+xml")
 
     def serve_frame_image(self, basename: str, frame_name: str):
+        _validate_path_param(basename)
+        _validate_path_param(frame_name)
         frame_path = self.output_frames_dir / basename / frame_name
         if not frame_path.exists():
             raise HTTPException(status_code=404, detail="Frame não encontrado")

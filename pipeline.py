@@ -46,7 +46,7 @@ _ENV_DEFAULTS = {
     "vision_model": os.environ.get("VISION_MODEL", "moondream"),
     "text_model":   os.environ.get("TEXT_MODEL",   "qwen2.5:3b"),
     "whisper_model":os.environ.get("WHISPER_MODEL","base"),
-    "fps_frame_extraction": "1/10",
+    "fps_frame_extraction": "1/8",
     "max_ocr_frames": "3",
 }
 
@@ -54,12 +54,23 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
 
+_MONGO_CLIENT = None
+
+
+def _get_shared_mongo_client():
+    """Retorna um MongoClient único e reutilizável (criado sob demanda no primeiro uso)."""
+    global _MONGO_CLIENT
+    if _MONGO_CLIENT is None:
+        from pymongo import MongoClient
+        mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+        _MONGO_CLIENT = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+    return _MONGO_CLIENT
+
+
 def _get_mongo_config() -> dict:
     """Lê app_config do MongoDB. Retorna dict vazio se não conseguir conectar."""
     try:
-        from pymongo import MongoClient
-        mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=1500)
+        client = _get_shared_mongo_client()
         docs = list(client["pipelineface"]["app_config"].find({}, {"_id": 0, "key": 1, "value": 1}))
         return {d["key"]: d["value"] for d in docs}
     except Exception:
@@ -140,12 +151,15 @@ class KnowledgePipeline:
         ]:
             d.mkdir(parents=True, exist_ok=True)
 
+        self._mongo_client = None
+
     def get_mongo_db(self):
         try:
-            from pymongo import MongoClient
-            mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-            return client["pipelineface"]
+            if self._mongo_client is None:
+                from pymongo import MongoClient
+                mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+                self._mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+            return self._mongo_client["pipelineface"]
         except Exception:
             return None
 
@@ -315,7 +329,7 @@ class KnowledgePipeline:
             console.print(f"[yellow]⚠️  Falha ao extrair áudio: {e}[/yellow]")
             audio_path = None
 
-        fps_param = f"fps={self.fps_extraction},scale=720:-1" if hasattr(self, 'fps_extraction') and self.fps_extraction != "1/10" else "fps=1/8,scale=720:-1"
+        fps_param = f"fps={self.fps_extraction},scale=720:-1"
         cmd_frames = [
             "ffmpeg", "-y", "-i", str(video_path),
             "-vf", fps_param, "-q:v", "3",
@@ -371,13 +385,24 @@ class KnowledgePipeline:
                 },
                 method="POST"
             )
-
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                res_json = json.loads(resp.read().decode("utf-8"))
-                return res_json.get("text", "").strip()
         except Exception as e:
             console.print(f"[red]❌ Erro na transcrição Whisper: {e}[/red]")
             return f"[Erro Whisper: {e}]"
+
+        max_retries = 3
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    res_json = json.loads(resp.read().decode("utf-8"))
+                    return res_json.get("text", "").strip()
+            except Exception as e:
+                last_error = e
+                console.print(f"[yellow]⚠️ Tentativa {attempt}/{max_retries} falhou para o Whisper: {e}. Tentando novamente...[/yellow]")
+                time.sleep(3 * attempt)
+
+        console.print(f"[red]❌ Erro na transcrição Whisper: {last_error}[/red]")
+        return f"[Erro Whisper: {last_error}]"
 
     def query_ollama(self, model: str, prompt: str, image_path: Path = None, system_prompt: str = None, json_format: bool = False) -> str:
         # Se for modelo de visão com imagem, usar o endpoint /api/generate (que funciona confiavelmente com Moondream)
@@ -477,6 +502,11 @@ class KnowledgePipeline:
         descriptions = []
         saved_paths = []
 
+        # Limitar a quantidade de frames analisados via LLM de visão (amostragem uniforme)
+        if len(frame_paths) > self.max_ocr_frames:
+            step = len(frame_paths) / self.max_ocr_frames
+            frame_paths = [frame_paths[int(i * step)] for i in range(self.max_ocr_frames)]
+
         for frame_path in frame_paths:
             prompt = (
                 "Classify this video frame: Is it a SCREEN/TOOL (showing a website, app, dashboard, search engine, or tool interface) "
@@ -503,7 +533,7 @@ class KnowledgePipeline:
 
         # Se nenhum frame foi classificado como tela, usar OCR Tesseract nos frames
         if not descriptions:
-            for frame_path in frame_paths[:5]:  # limitar a 5 frames
+            for frame_path in frame_paths[:self.max_ocr_frames]:  # limitar frames de OCR
                 try:
                     import pytesseract
                     prep_img = self.preprocess_image_for_ocr(frame_path)
@@ -851,7 +881,15 @@ class KnowledgePipeline:
                 if len(carousel_paths) > 1:
                     console.print(f"  [bold cyan]🎠 Carrossel unificado com {len(carousel_paths)} slides![/bold cyan]")
                 visual_summary = self.ocr_image(filepath, carousel_paths=carousel_paths)
-                saved_frame_paths = [str(p) for p in carousel_paths]
+                # Copiar slides de entrada para output/frames/{basename}/ (mesmo padrão do vídeo),
+                # pois os arquivos de entrada são deletados ao final do processamento
+                target_carousel_frames_dir = self.output_frames_dir / basename
+                target_carousel_frames_dir.mkdir(parents=True, exist_ok=True)
+                saved_frame_paths = []
+                for c_path in carousel_paths:
+                    dest_path = target_carousel_frames_dir / c_path.name
+                    shutil.copy2(c_path, dest_path)
+                    saved_frame_paths.append(str(dest_path))
 
             send_telemetry_event(self.run_id, "LLM_SEO_EXTRACTION", status="in_progress", filename=filename, message="Gerando síntese em SEO via LLM")
             seo_knowledge = self.extract_seo_knowledge(filename, is_video=(filetype == "video"), transcription=transcription, visual_summary=visual_summary)
@@ -871,7 +909,7 @@ class KnowledgePipeline:
             saved_frames = [
                 {
                     "filename": Path(fpath).name,
-                    "url": f"/api/media/input/images/{Path(fpath).name}" if filetype != "video" else f"/api/media/frames/{basename}/{Path(fpath).name}"
+                    "url": f"/api/media/frames/{basename}/{Path(fpath).name}"
                 }
                 for fpath in saved_frame_paths
             ]
@@ -912,6 +950,11 @@ class KnowledgePipeline:
                     "saved_frames": saved_frames
                 },
                 "seo_knowledge": seo_knowledge,
+                "user_implementation": {
+                    "status": "pendente",
+                    "completed_steps": [],
+                    "comments": []
+                },
                 "updated_at": datetime.now().isoformat()
             }
 
@@ -919,19 +962,24 @@ class KnowledgePipeline:
             saved_to_db = False
             if db is not None:
                 try:
-                    existing = db["seo_knowledge"].find_one({"basename": basename})
-                    if existing and "user_implementation" in existing:
-                        document["user_implementation"] = existing["user_implementation"]
-                    else:
-                        document["user_implementation"] = {
-                            "status": "pendente",
-                            "completed_steps": [],
-                            "comments": []
-                        }
-
+                    # Atualização atômica: o pipeline só é dono dos campos em $set;
+                    # user_implementation e campos de criação são preservados via $setOnInsert
                     db["seo_knowledge"].update_one(
                         {"basename": basename},
-                        {"$set": document},
+                        {
+                            "$set": {
+                                "input_file": document["input_file"],
+                                "content": document["content"],
+                                "seo_knowledge": document["seo_knowledge"],
+                                "metadata": document["metadata"],
+                                "updated_at": document["updated_at"]
+                            },
+                            "$setOnInsert": {
+                                "basename": basename,
+                                "source_file": document["source_file"],
+                                "user_implementation": document["user_implementation"]
+                            }
+                        },
                         upsert=True
                     )
                     console.print(f"[bold green]✅ Sucesso! Conhecimento do carrossel salvo no MongoDB (coleção: seo_knowledge)[/bold green]")
@@ -945,14 +993,18 @@ class KnowledgePipeline:
                     json.dump(document, f, ensure_ascii=False, indent=2)
                 console.print(f"[bold yellow]⚠️ Salvo em backup JSON local: {output_path}[/bold yellow]")
 
-            # Deletar todos os arquivos de entrada do carrossel para liberar espaço em disco
-            for c_path in carousel_paths:
-                try:
-                    if c_path.exists():
-                        c_path.unlink()
-                        console.print(f"[green]🗑️  Arquivo de entrada removido: {c_path.name}[/green]")
-                except Exception as del_err:
-                    console.print(f"[yellow]⚠️  Falha ao remover arquivo {c_path.name}: {del_err}[/yellow]")
+            # Deletar os arquivos de entrada apenas se o conhecimento tiver qualidade mínima (score > 0);
+            # com score 0 (conhecimento inválido/alucinado) a fonte é preservada para reprocessamento
+            if score > 0:
+                for c_path in carousel_paths:
+                    try:
+                        if c_path.exists():
+                            c_path.unlink()
+                            console.print(f"[green]🗑️  Arquivo de entrada removido: {c_path.name}[/green]")
+                    except Exception as del_err:
+                        console.print(f"[yellow]⚠️  Falha ao remover arquivo {c_path.name}: {del_err}[/yellow]")
+            else:
+                console.print(f"[yellow]⚠️  Quality score 0 — arquivos de entrada preservados para reprocessamento: {filename}[/yellow]")
 
             # Limpar arquivo de áudio temporário se existir
             if filetype == "video":
@@ -1022,7 +1074,7 @@ class KnowledgePipeline:
             else:
                 error_count += 1
 
-        final_status = "completed" if error_count == 0 else ("error" if success_count == 0 else "completed")
+        final_status = "error" if success_count == 0 else ("completed" if error_count == 0 else "completed_with_errors")
         run_doc.update({
             "status": final_status,
             "finished_at": datetime.now().isoformat(),
@@ -1032,10 +1084,10 @@ class KnowledgePipeline:
         })
         self._save_pipeline_run(run_doc)
 
-        event_status = "completed" if final_status == "completed" else "error"
+        event_status = "error" if final_status == "error" else "completed"
         send_telemetry_event(
             self.run_id,
-            "PIPELINE_COMPLETE" if final_status == "completed" else "PIPELINE_ERROR",
+            "PIPELINE_ERROR" if final_status == "error" else "PIPELINE_COMPLETE",
             status=event_status,
             message=f"Pipeline finalizado. Éxito: {success_count}/{len(pending)} arquivos, Erros: {error_count}"
         )
@@ -1045,7 +1097,11 @@ class KnowledgePipeline:
         console.print(f"[bold blue]👀 Pipeline Python ativo em modo contínuo (intervalo: {interval}s)...[/bold blue]")
         try:
             while True:
-                self.run_once()
+                try:
+                    self.run_once()
+                except Exception as e:
+                    console.print(f"[bold red]❌ Erro no ciclo do modo watch: {e}[/bold red]")
+                    console.print(traceback.format_exc())
                 time.sleep(interval)
         except KeyboardInterrupt:
             console.print("\n[yellow]🛑 Monitoramento encerrado pelo usuário.[/yellow]")

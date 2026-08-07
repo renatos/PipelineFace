@@ -143,7 +143,7 @@ def create_app() -> FastAPI:
         delete_post_use_case,
         run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case,
         list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case,
-        media_service
+        media_service, mongo_repo.db
     )
 
 
@@ -158,6 +158,12 @@ def create_app() -> FastAPI:
         sync_use_case.execute()
     except Exception as e:
         print(f"Aviso: Erro na sincronização inicial: {e}")
+
+    # Migração única: autocorreção de post_type de posts com URLs de vídeo (removida do caminho de leitura)
+    try:
+        post_repo.fix_video_post_types()
+    except Exception as e:
+        print(f"Aviso: migração de post_type falhou: {e}")
 
     return app
 

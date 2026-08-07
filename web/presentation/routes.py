@@ -128,6 +128,7 @@ list_pillars_use_case: ListSEOPillarsUseCase = None
 save_pillar_use_case: SaveSEOPillarUseCase = None
 delete_pillar_use_case: DeleteSEOPillarUseCase = None
 media_service: MediaStreamingService = None
+mongo_db = None
 
 
 def init_routes(
@@ -142,7 +143,7 @@ def init_routes(
     _delete_post_use_case,
     _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
     _list_pillars_use_case, _save_pillar_use_case, _delete_pillar_use_case,
-    _media_service
+    _media_service, _mongo_db
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
     global toggle_step_use_case, update_status_use_case, add_comment_use_case
@@ -155,7 +156,7 @@ def init_routes(
     global delete_post_use_case
     global run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case
     global list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case
-    global media_service
+    global media_service, mongo_db
 
     sync_use_case = _sync_use_case
     get_strategies_use_case = _get_strategies_use_case
@@ -189,6 +190,7 @@ def init_routes(
     save_pillar_use_case = _save_pillar_use_case
     delete_pillar_use_case = _delete_pillar_use_case
     media_service = _media_service
+    mongo_db = _mongo_db
 
 
 
@@ -235,11 +237,12 @@ def download_single_post(post_id: str, background_tasks: BackgroundTasks):
     if status.get("running"):
         raise HTTPException(status_code=400, detail=f"Processo {status.get('name')} já está em execução.")
 
-    try:
-        background_tasks.add_task(run_download_single_post_use_case.execute, post_id)
-        return {"status": "started", "message": f"Download do post {post_id} iniciado em segundo plano"}
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    post = run_download_single_post_use_case.repository.find_by_post_id(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} não encontrado")
+
+    background_tasks.add_task(run_download_single_post_use_case.execute, post_id)
+    return {"status": "started", "message": f"Download do post {post_id} iniciado em segundo plano"}
 
 
 @router.patch("/api/profile-posts/{post_id}/status")
@@ -293,7 +296,10 @@ def get_config(key: str):
 @router.patch("/api/configs/{key}")
 def update_config(key: str, payload: UpdateConfigRequest):
     """Atualiza o valor de um parâmetro de configuração editável."""
-    updated = update_config_use_case.execute(key, payload.value.strip())
+    try:
+        updated = update_config_use_case.execute(key, payload.value.strip())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not updated:
         raise HTTPException(status_code=404, detail=f"Configuração '{key}' não encontrada ou não é editável")
     return updated.model_dump()
@@ -337,12 +343,7 @@ def delete_seo_pillar(pillar_id: str):
 @router.get("/api/seo-playbook")
 def get_seo_playbook():
     """Retorna o documento do Playbook SEO Consolidado gerado no MongoDB."""
-    from pymongo import MongoClient
-    import os
-    mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
-    db = client["pipelineface"]
-    pb = db["seo_playbook"].find_one({"id": "playbook_principal"}, {"_id": 0})
+    pb = mongo_db["seo_playbook"].find_one({"id": "playbook_principal"}, {"_id": 0})
     if not pb:
         raise HTTPException(status_code=404, detail="Playbook ainda não foi gerado.")
     return pb
@@ -482,8 +483,7 @@ def stream_video(filename: str, request: Request):
 
 @router.get("/api/media/input/images/{filename}")
 def serve_input_image(filename: str):
-    db_conn = getattr(list_posts_use_case.repository, 'db', None) if list_posts_use_case and hasattr(list_posts_use_case, 'repository') else None
-    return media_service.serve_input_image(filename, mongo_db=db_conn)
+    return media_service.serve_input_image(filename, mongo_db=mongo_db)
 
 
 @router.get("/api/media/frames/{basename}/{frame_name}")

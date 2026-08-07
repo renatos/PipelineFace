@@ -3,14 +3,14 @@
 PipelineFace — Script de Limpeza do MongoDB
 =============================================
 Apaga o conteúdo de todas as coleções de execuções, posts e telemetria,
-preservando unicamente as coleções `target_profiles` e `app_config`.
+preservando unicamente as coleções `target_profiles`, `app_config` e `seo_pillars`.
 """
 
 import os
 import sys
 from pymongo import MongoClient
 
-def clean_database():
+def clean_database(assume_yes: bool = False):
     mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
     print(f"🔌 Conectando ao MongoDB em: {mongo_uri}")
     
@@ -19,7 +19,7 @@ def clean_database():
         db = client["pipelineface"]
         
         # Coleções a serem mantidas intactas
-        keep_collections = {"target_profiles", "app_config"}
+        keep_collections = {"target_profiles", "app_config", "seo_pillars"}
         
         # Listar todas as coleções existentes
         all_collections = set(db.list_collection_names())
@@ -32,6 +32,12 @@ def clean_database():
         else:
             print("  • Nenhuma coleção adicional para limpar.")
             return
+
+        if not assume_yes:
+            confirmacao = input("\n⚠️ Esta operação é irreversível. Digite SIM para confirmar: ").strip()
+            if confirmacao != "SIM":
+                print("❌ Operação cancelada pelo usuário.")
+                return
 
         print("\n🧹 Limpando dados...")
         for col_name in to_clean:
@@ -46,4 +52,4 @@ def clean_database():
         sys.exit(1)
 
 if __name__ == "__main__":
-    clean_database()
+    clean_database(assume_yes="--yes" in sys.argv)
