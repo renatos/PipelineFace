@@ -48,6 +48,8 @@ except ImportError:
     print("❌ Playwright não instalado. Execute: pip install playwright && playwright install chromium")
     sys.exit(1)
 
+from extractors import ImageFeedExtractor, ReelVideoExtractor
+
 try:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
@@ -177,6 +179,10 @@ class FacebookScraper:
         self.errors: list[str] = []
         self.run_id = str(uuid.uuid4())[:8]
         
+        # Extratores de conteúdo especializados
+        self.image_extractor = ImageFeedExtractor(self)
+        self.video_extractor = ReelVideoExtractor(self)
+
         # Histórico persistente de downloads para evitar re-download
         self.history_file = self.output_metadata / "download_history.json"
         self._mongo_client = None
@@ -567,139 +573,11 @@ class FacebookScraper:
 
     def _extract_feed_units(self, page) -> list[dict]:
         """Extrai unidades de posts do feed agrupadas por container de card (post)."""
-        units = page.evaluate("""() => {
-            const results = [];
-            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
-            
-            // Selecionar containers de cards de post no feed do Facebook
-            let cards = Array.from(mainContainer.querySelectorAll('div[role="article"], div[data-pagelet*="FeedUnit"]'));
-            
-            if (cards.length === 0) {
-                const anchors = mainContainer.querySelectorAll('a[href*="/posts/"], a[href*="set=pcb."], a[href*="/photo"], a[href*="/videos/"], a[href*="/reel/"]');
-                const cardSet = new Set();
-                anchors.forEach(a => {
-                    let parent = a.parentElement;
-                    for (let i = 0; i < 6; i++) {
-                        if (parent && parent !== mainContainer) {
-                            if (parent.tagName === 'DIV' && parent.children.length > 1) {
-                                cardSet.add(parent);
-                                break;
-                            }
-                            parent = parent.parentElement;
-                        }
-                    }
-                });
-                cards = Array.from(cardSet);
-            }
-
-            cards.forEach(card => {
-                const links = [];
-                const images = [];
-                const videos = [];
-
-                const textEl = card.querySelector('div[dir="auto"]');
-                const text = textEl ? textEl.textContent.trim().substring(0, 200) : "";
-
-                const anchors = card.querySelectorAll('a[href*="/posts/"], a[href*="set=pcb."], a[href*="/photo"], a[href*="/videos/"], a[href*="/reel/"], a[href*="fbid="]');
-                anchors.forEach(a => {
-                    if (a.href && !a.href.includes('notif') && !a.href.includes('ref=bookmarks')) {
-                        links.push(a.href);
-                    }
-                });
-
-                const imgs = card.querySelectorAll('img');
-                imgs.forEach(img => {
-                    let url = img.src || '';
-                    // Lazy-load do Facebook: src pode ser placeholder data:image/svg+xml.
-                    // Nesse caso, usar o maior candidato do srcset (URL real do CDN).
-                    if (url.startsWith('data:')) {
-                        const srcset = img.getAttribute('srcset') || '';
-                        const candidates = srcset.split(',')
-                            .map(s => s.trim().split(/\\s+/)[0])
-                            .filter(u => u && !u.startsWith('data:'));
-                        if (candidates.length > 0) url = candidates[candidates.length - 1];
-                    }
-                    if (!url || url.startsWith('data:')) return;
-                    if (url.includes('emoji') || url.includes('rsrc.php')) return;
-                    if (url.includes('/emg1/')) return; // thumbnail de preview de link externo, não é mídia do post
-                    images.push({
-                        url: url,
-                        alt: img.alt || null
-                    });
-                });
-
-                const vids = card.querySelectorAll('video');
-                vids.forEach(v => {
-                    const src = v.src || v.querySelector('source')?.src;
-                    if (src && !src.startsWith('blob:')) {
-                        videos.push(src);
-                    }
-                });
-
-                // Permalinks de foto (/photo?fbid=...) — resolvidos via Playwright no download.
-                // Cobrem o caso do lazy-load em que o <img> ainda é placeholder.
-                const photoLinks = links.filter(h => h.includes('/photo') || h.includes('fbid='));
-
-                if (links.length > 0 || images.length > 0 || videos.length > 0) {
-                    results.push({
-                        links: Array.from(new Set(links)),
-                        images: images,
-                        photo_links: Array.from(new Set(photoLinks)),
-                        videos: Array.from(new Set(videos)),
-                        text: text
-                    });
-                }
-            });
-
-            return results;
-        }""")
-        return units
+        return self.image_extractor.extract_feed_units(page)
 
     def _extract_image_urls(self, page) -> list[dict]:
         """Extrai URLs de imagens da página atual estritamente do feed do perfil."""
-        images = page.evaluate("""() => {
-            const results = [];
-            const seen = new Set();
-            const mainContainer = document.querySelector('div[role="main"]') || document.querySelector('main') || document.body;
-
-            // Buscar imagens em posts no feed
-            const imgElements = mainContainer.querySelectorAll('img');
-            imgElements.forEach(img => {
-                const src = img.src;
-                if (!src || seen.has(src)) return;
-                if (src.startsWith('data:')) return; // placeholder de lazy-load, não é imagem real
-
-                // Filtrar imagens de perfil/sistema/emojis do Facebook
-                if (src.includes('emoji') || src.includes('rsrc.php')) return;
-
-                seen.add(src);
-                results.push({
-                    url: src,
-                    alt: img.alt || null,
-                    width: img.naturalWidth || img.width || 0,
-                    height: img.naturalHeight || img.height || 0
-                });
-            });
-
-            // Buscar links para fotos no feed
-            const photoLinks = mainContainer.querySelectorAll('a[href*="/photo"], a[href*="fbid="]');
-            photoLinks.forEach(link => {
-                const href = link.href;
-                if (!href || href.includes('notif')) return;
-
-                if (!seen.has(href)) {
-                    seen.add(href);
-                    results.push({
-                        url: href,
-                        type: 'photo_link',
-                        text: link.textContent?.trim()?.substring(0, 100) || null
-                    });
-                }
-            });
-
-            return results;
-        }""")
-        return images
+        return self.image_extractor.extract_image_urls(page)
 
     def _extract_post_links(self, page) -> list[dict]:
         """Extrai todas as URLs de posts/mídias diretamente do feed principal ([role=main])."""
@@ -1289,91 +1167,66 @@ class FacebookScraper:
                 ]
                 for sub_url in subpages:
                     try:
-                        console.print(f"\n[bold blue]🎬 Varrendo aba dedicada de mídias:[/bold blue] {sub_url}")
-                        page.goto(sub_url, timeout=PAGE_LOAD_TIMEOUT)
-                        time.sleep(3)
-                        self._dismiss_popups(page)
-                        
-                        last_h = 0
-                        no_chg = 0
-                        for sub_scroll in range(1, 40):
-                            page.evaluate("window.scrollBy(0, window.innerHeight * 3)")
-                            time.sleep(self.scroll_pause)
-                            
-                            sub_anchors = page.evaluate("""() => {
-                                const links = Array.from(document.querySelectorAll('a'));
-                                return links.map(a => ({ url: a.href, text: a.textContent?.trim() || '' }))
-                                            .filter(item => item.url && (item.url.includes('/reel/') || item.url.includes('/videos/') || item.url.includes('/watch/')));
-                            }""")
-                            
-                            for sa in sub_anchors:
-                                item_url = self._clean_facebook_url(sa["url"])
-                                post_id, media_fbid = self._extract_post_and_media_ids(item_url)
-                                if not post_id or post_id in seen_post_ids:
-                                    continue
-                                
-                                unique_sub_id = media_fbid or post_id[:16]
-                                media_id = f"m_{unique_sub_id}_v0"
-                                media_item = {
-                                    "media_id": media_id,
-                                    "url": item_url,
-                                    "type": "video",
-                                    "filename": None,
-                                    "downloaded": False,
-                                    "download_error": None
-                                }
-                                
-                                is_new_post = post_id not in seen_post_ids
-                                seen_post_ids.add(post_id)
-                                
-                                has_fb_permalink = "facebook.com" in item_url and any(k in item_url for k in ["/posts/", "/videos/", "/reel/", "fbid=", "set=pcb"])
-                                post_url = item_url if has_fb_permalink else item_url
-                                
-                                if db is not None:
-                                    try:
-                                        existing_post = db["profile_posts"].find_one({"post_id": post_id})
-                                        existing_medias = existing_post.get("media_items", []) if existing_post else []
-                                        media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
-                                        
-                                        update_op = {
-                                            "$set": {
-                                                "profile_url": self.target_url,
-                                                "profile_name": profile_name,
-                                                "post_url": post_url,
-                                                "post_type": "video",
-                                                "scroll_position": sub_scroll,
-                                                "updated_at": datetime.now().isoformat()
-                                            },
-                                            "$setOnInsert": {
-                                                "status": "pending",
-                                                "discovered_at": datetime.now().isoformat(),
-                                                "error_message": None
-                                            }
+                        console.print(f"\n[bold blue]🎬 Varrendo aba dedicada de mídias com VideoExtractor:[/bold blue] {sub_url}")
+                        extracted_video_items = self.video_extractor.extract_reels_and_videos(
+                            page, sub_url, scroll_pause=self.scroll_pause, max_scrolls=40
+                        )
+
+                        for item in extracted_video_items:
+                            post_id = item["post_id"]
+                            item_url = item["item_url"]
+                            media_id = item["media_id"]
+                            sub_scroll = item["scroll_position"]
+
+                            if post_id in seen_post_ids:
+                                continue
+                            seen_post_ids.add(post_id)
+
+                            media_item = {
+                                "media_id": media_id,
+                                "url": item_url,
+                                "type": "video",
+                                "filename": None,
+                                "downloaded": False,
+                                "download_error": None
+                            }
+
+                            if db is not None:
+                                try:
+                                    existing_post = db["profile_posts"].find_one({"post_id": post_id})
+                                    existing_medias = existing_post.get("media_items", []) if existing_post else []
+                                    media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
+
+                                    update_op = {
+                                        "$set": {
+                                            "profile_url": self.target_url,
+                                            "profile_name": profile_name,
+                                            "post_url": item_url,
+                                            "post_type": "video",
+                                            "scroll_position": sub_scroll,
+                                            "updated_at": datetime.now().isoformat()
+                                        },
+                                        "$setOnInsert": {
+                                            "status": "pending",
+                                            "discovered_at": datetime.now().isoformat(),
+                                            "error_message": None
                                         }
-                                        if not media_exists:
-                                            update_op["$addToSet"] = {"media_items": media_item}
-                                            update_op["$set"]["status"] = "pending"
-                                            update_op["$setOnInsert"].pop("status", None)
-                                        
-                                        res = db["profile_posts"].update_one(
-                                            {"post_id": post_id},
-                                            update_op,
-                                            upsert=True
-                                        )
-                                        if res.upserted_id:
-                                            new_posts_count += 1
-                                        cataloged_count += 1
-                                    except Exception as mongo_err:
-                                        pass
-                            
-                            new_h = page.evaluate("Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0)")
-                            if new_h == last_h:
-                                no_chg += 1
-                                if no_chg >= 6:
-                                    break
-                            else:
-                                no_chg = 0
-                            last_h = new_h
+                                    }
+                                    if not media_exists:
+                                        update_op["$addToSet"] = {"media_items": media_item}
+                                        update_op["$set"]["status"] = "pending"
+                                        update_op["$setOnInsert"].pop("status", None)
+
+                                    res = db["profile_posts"].update_one(
+                                        {"post_id": post_id},
+                                        update_op,
+                                        upsert=True
+                                    )
+                                    if res.upserted_id:
+                                        new_posts_count += 1
+                                    cataloged_count += 1
+                                except Exception as mongo_err:
+                                    pass
                     except Exception as sub_err:
                         console.print(f"[yellow]⚠️ Erro ao varrer subpágina {sub_url}: {sub_err}[/yellow]")
 
