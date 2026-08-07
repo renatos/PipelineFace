@@ -1107,10 +1107,10 @@ class FacebookScraper:
                                             existing_medias = []
                                             consecutive_existing_count = 0
 
-                                        # Identificar apenas mídias novas (sem duplicar media_id)
+                                        # Identificar apenas mídias novas (sem duplicar media_id nem URL)
                                         new_media_items = [
                                             c_item for c_item in card_media_items
-                                            if not any(m.get("media_id") == c_item["media_id"] for m in existing_medias)
+                                            if not any(m.get("media_id") == c_item["media_id"] or m.get("url") == c_item["url"] for m in existing_medias)
                                         ]
 
                                         final_post_type = "album" if len(existing_medias) + len(new_media_items) > 1 else card_post_type
@@ -1223,8 +1223,8 @@ class FacebookScraper:
                                     existing_medias = []
                                     consecutive_existing_count = 0
                                 
-                                # Filtrar duplicatas por media_id
-                                media_exists = any(m.get("media_id") == media_id for m in existing_medias)
+                                # Filtrar duplicatas por media_id ou URL
+                                media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
 
                                 final_post_type = "album" if len(existing_medias) + (0 if media_exists else 1) > 1 else post_type
 
@@ -1333,7 +1333,7 @@ class FacebookScraper:
                                     try:
                                         existing_post = db["profile_posts"].find_one({"post_id": post_id})
                                         existing_medias = existing_post.get("media_items", []) if existing_post else []
-                                        media_exists = any(m.get("media_id") == media_id for m in existing_medias)
+                                        media_exists = any(m.get("media_id") == media_id or m.get("url") == item_url for m in existing_medias)
                                         
                                         update_op = {
                                             "$set": {
