@@ -101,7 +101,11 @@ python3 scraper/facebook_scraper.py --target "https://www.facebook.com/PROFILE" 
 
 ### Running the Pipeline:
 ```bash
-python3 pipeline.py --process-all
+# Process all pending files in data/input/ once
+python3 pipeline.py
+
+# Continuous daemon mode (every 30s)
+python3 pipeline.py --watch --interval 30
 ```
 
 ---

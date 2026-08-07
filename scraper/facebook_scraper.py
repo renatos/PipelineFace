@@ -609,12 +609,23 @@ class FacebookScraper:
 
                 const imgs = card.querySelectorAll('img');
                 imgs.forEach(img => {
-                    if (img.src && !img.src.includes('emoji') && !img.src.includes('rsrc.php')) {
-                        images.push({
-                            url: img.src,
-                            alt: img.alt || null
-                        });
+                    let url = img.src || '';
+                    // Lazy-load do Facebook: src pode ser placeholder data:image/svg+xml.
+                    // Nesse caso, usar o maior candidato do srcset (URL real do CDN).
+                    if (url.startsWith('data:')) {
+                        const srcset = img.getAttribute('srcset') || '';
+                        const candidates = srcset.split(',')
+                            .map(s => s.trim().split(/\\s+/)[0])
+                            .filter(u => u && !u.startsWith('data:'));
+                        if (candidates.length > 0) url = candidates[candidates.length - 1];
                     }
+                    if (!url || url.startsWith('data:')) return;
+                    if (url.includes('emoji') || url.includes('rsrc.php')) return;
+                    if (url.includes('/emg1/')) return; // thumbnail de preview de link externo, não é mídia do post
+                    images.push({
+                        url: url,
+                        alt: img.alt || null
+                    });
                 });
 
                 const vids = card.querySelectorAll('video');
@@ -625,10 +636,15 @@ class FacebookScraper:
                     }
                 });
 
+                // Permalinks de foto (/photo?fbid=...) — resolvidos via Playwright no download.
+                // Cobrem o caso do lazy-load em que o <img> ainda é placeholder.
+                const photoLinks = links.filter(h => h.includes('/photo') || h.includes('fbid='));
+
                 if (links.length > 0 || images.length > 0 || videos.length > 0) {
                     results.push({
                         links: Array.from(new Set(links)),
                         images: images,
+                        photo_links: Array.from(new Set(photoLinks)),
                         videos: Array.from(new Set(videos)),
                         text: text
                     });
@@ -651,6 +667,7 @@ class FacebookScraper:
             imgElements.forEach(img => {
                 const src = img.src;
                 if (!src || seen.has(src)) return;
+                if (src.startsWith('data:')) return; // placeholder de lazy-load, não é imagem real
 
                 // Filtrar imagens de perfil/sistema/emojis do Facebook
                 if (src.includes('emoji') || src.includes('rsrc.php')) return;
@@ -990,6 +1007,7 @@ class FacebookScraper:
                         unit_links = unit.get("links", [])
                         unit_images = unit.get("images", [])
                         unit_videos = unit.get("videos", [])
+                        unit_photo_links = unit.get("photo_links", [])
 
                         # Determinar post_id do card
                         candidate_post_ids = []
@@ -1023,33 +1041,88 @@ class FacebookScraper:
                         # Se encontrou um post_id para o card e existem imagens/vídeos nele
                         if primary_post_id and (unit_images or unit_videos or unit_links):
                             card_media_items = []
-                            for idx_img, img in enumerate(unit_images):
-                                img_url = self._clean_facebook_url(img["url"])
-                                _, img_fbid = self._extract_post_and_media_ids(img_url)
-                                media_id = f"m_{img_fbid or primary_post_id[:16]}_{idx_img}"
-                                card_media_items.append({
-                                    "media_id": media_id,
-                                    "url": img_url,
-                                    "type": "image",
-                                    "filename": None,
-                                    "downloaded": False,
-                                    "download_error": None
-                                })
 
-                            for idx_v, v_url in enumerate(unit_videos):
-                                clean_v = self._clean_facebook_url(v_url)
-                                media_id = f"m_{primary_post_id[:16]}_v{idx_v}"
-                                card_media_items.append({
-                                    "media_id": media_id,
-                                    "url": clean_v,
-                                    "type": "video",
-                                    "filename": None,
-                                    "downloaded": False,
-                                    "download_error": None
-                                })
+                            # Verificar se o card é um post de vídeo/reel
+                            video_link_candidates = [
+                                l for l in ([primary_url] + unit_links) if l and any(k in l.lower() for k in ["/reel/", "/videos/", "/watch/", ".mp4"])
+                            ]
+                            is_video_card = bool(video_link_candidates or unit_videos)
+
+                            if is_video_card:
+                                # Adicionar os links de vídeo
+                                added_video_urls = set()
+                                for idx_v, v_url in enumerate(video_link_candidates + unit_videos):
+                                    clean_v = self._clean_facebook_url(v_url)
+                                    if clean_v in added_video_urls:
+                                        continue
+                                    added_video_urls.add(clean_v)
+                                    media_id = f"m_{primary_post_id[:16]}_v{idx_v}"
+                                    card_media_items.append({
+                                        "media_id": media_id,
+                                        "url": clean_v,
+                                        "type": "video",
+                                        "filename": None,
+                                        "downloaded": False,
+                                        "download_error": None
+                                    })
+                                
+                                # Se houver links explicitos de fotos alem do video (ex: album misto), adiciona-os
+                                if unit_photo_links:
+                                    for idx_p, p_url in enumerate(unit_photo_links):
+                                        clean_p = self._clean_facebook_url(p_url)
+                                        _, p_fbid = self._extract_post_and_media_ids(clean_p)
+                                        card_media_items.append({
+                                            "media_id": f"m_{p_fbid or primary_post_id[:16]}_p{idx_p}",
+                                            "url": clean_p,
+                                            "type": "image",
+                                            "filename": None,
+                                            "downloaded": False,
+                                            "download_error": None
+                                        })
+                            else:
+                                # Card de imagens/fotos
+                                for idx_img, img in enumerate(unit_images):
+                                    img_url = self._clean_facebook_url(img["url"])
+                                    if img_url.startswith("data:"):
+                                        continue  # placeholder de lazy-load, nunca é mídia real
+                                    _, img_fbid = self._extract_post_and_media_ids(img_url)
+                                    media_id = f"m_{img_fbid or primary_post_id[:16]}_{idx_img}"
+                                    card_media_items.append({
+                                        "media_id": media_id,
+                                        "url": img_url,
+                                        "type": "image",
+                                        "filename": None,
+                                        "downloaded": False,
+                                        "download_error": None
+                                    })
+
+                                # Permalinks de foto (/photo?fbid=...) como mídia de imagem.
+                                for idx_p, p_url in enumerate(unit_photo_links):
+                                    clean_p = self._clean_facebook_url(p_url)
+                                    _, p_fbid = self._extract_post_and_media_ids(clean_p)
+                                    if p_fbid and any(p_fbid in m["media_id"] for m in card_media_items):
+                                        continue
+                                    if any(m["url"] == clean_p for m in card_media_items):
+                                        continue
+                                    card_media_items.append({
+                                        "media_id": f"m_{p_fbid or primary_post_id[:16]}_p{idx_p}",
+                                        "url": clean_p,
+                                        "type": "image",
+                                        "filename": None,
+                                        "downloaded": False,
+                                        "download_error": None
+                                    })
 
                             if card_media_items:
-                                card_post_type = "video" if (unit_videos and not unit_images) else ("album" if len(card_media_items) > 1 else "image")
+                                has_video = any(m["type"] == "video" for m in card_media_items)
+                                has_image = any(m["type"] == "image" for m in card_media_items)
+                                if has_video and not has_image:
+                                    card_post_type = "video"
+                                elif len(card_media_items) > 1:
+                                    card_post_type = "album"
+                                else:
+                                    card_post_type = "image"
+                                
                                 is_new_post = primary_post_id not in seen_post_ids
                                 seen_post_ids.add(primary_post_id)
 
