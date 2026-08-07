@@ -299,7 +299,7 @@
   </main>
 
   <!-- MODAL LIGHTBOX / ZOOM DE IMAGENS -->
-  <div id="modal-lightbox" onclick="closeModal('modal-lightbox')" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex flex-col items-center justify-center p-4">
+  <div id="modal-lightbox" onclick="closeModal('modal-lightbox')" class="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md hidden flex flex-col items-center justify-center p-4">
     <button onclick="closeModal('modal-lightbox')" class="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-white transition z-10 shadow-lg" title="Fechar (ESC)">
       <i data-lucide="x" class="w-6 h-6"></i>
     </button>
@@ -417,7 +417,7 @@
                   <option value="concluido">✅ Concluído</option>
                 </select>
               </div>
-              <div id="modal-steps-container" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
+              <div id="modal-steps-container" class="space-y-1.5 max-h-96 overflow-y-auto pr-1"></div>
             </div>
 
             <div class="border-t border-slate-800 pt-5 space-y-3">
@@ -1355,17 +1355,12 @@
           gridHtml += `</div></div>`;
           mediaContainer.innerHTML = gridHtml;
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 flex items-center justify-center p-2";
-        } else if (input.media_url) {
-          mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
-          mediaContainer.innerHTML = input.type === 'video' ?
-            `<video controls src="${escHtml(input.media_url)}" class="w-full h-full object-contain"></video>` :
-            `<img src="${escHtml(input.media_url)}" class="w-full h-full object-contain cursor-zoom-in" onclick="openLightbox('${escHtml(input.media_url)}', '${escHtml(knowledge.titulo_estrategia || '')}')" onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/64748b?text=Imagem+Indisponivel';">`;
         } else {
           mediaContainer.className = "rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video flex items-center justify-center p-2";
           let fallbackHtml = `
             <div class="text-center p-4 space-y-2">
-              <i data-lucide="hard-drive-download" class="w-8 h-8 text-slate-500 mx-auto"></i>
-              <p class="text-xs text-slate-400 font-medium">Arquivo bruto não disponível no servidor.</p>
+              <i data-lucide="external-link" class="w-8 h-8 text-slate-500 mx-auto"></i>
+              <p class="text-xs text-slate-400 font-medium">Mídia original disponível apenas no Facebook.</p>
           `;
           if (input.url) {
             fallbackHtml += `
@@ -1432,26 +1427,24 @@
         const frame = (savedFrames && savedFrames.length > 0) ? (savedFrames[idx] || savedFrames[idx % savedFrames.length]) : null;
 
         const div = document.createElement('div');
-        div.className = `p-3 rounded-xl border transition space-y-2 ${isChecked ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-slate-950 border-slate-800/80 text-slate-300'}`;
-        
+        div.className = `px-3 py-2 rounded-lg border transition ${isChecked ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-slate-950 border-slate-800/80 text-slate-300'}`;
+
         let frameButtonHtml = '';
         if (frame && frame.url) {
           frameButtonHtml = `
-            <div class="flex items-center gap-2 pt-0.5">
-              <button type="button" onclick="openLightbox('${escHtml(frame.url)}', 'Quadro Passo ${idx+1}: ${escHtml(frame.filename || '')}')" class="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[11px] font-semibold flex items-center gap-1.5 transition">
-                <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                <span>Ver Tela / Frame (${escHtml(frame.filename || 'Quadro')})</span>
-              </button>
-            </div>
+            <button type="button" onclick="openLightbox('${escHtml(frame.url)}', 'Quadro Passo ${idx+1}: ${escHtml(frame.filename || '')}')" title="Ver Tela / Frame" class="shrink-0 px-2 py-1 rounded-md bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-400 border border-blue-500/20 text-[10px] font-semibold flex items-center gap-1 transition">
+              <i data-lucide="image" class="w-3 h-3"></i>
+              <span>${escHtml(frame.filename || 'Quadro')}</span>
+            </button>
           `;
         }
 
         div.innerHTML = `
-          <div class="flex items-start gap-3">
-            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})" class="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 cursor-pointer">
-            <label class="text-xs leading-relaxed cursor-pointer font-medium flex-1">${escHtml(stepText)}</label>
+          <div class="flex items-center gap-2.5">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleStep(${idx})" class="w-4 h-4 shrink-0 rounded bg-slate-900 border-slate-700 text-blue-600 cursor-pointer">
+            <label class="text-xs leading-snug cursor-pointer font-medium flex-1">${escHtml(stepText)}</label>
+            ${frameButtonHtml}
           </div>
-          ${frameButtonHtml}
         `;
         container.appendChild(div);
       });

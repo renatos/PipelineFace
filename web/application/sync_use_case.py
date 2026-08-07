@@ -21,14 +21,10 @@ class SyncKnowledgeUseCase:
         self,
         repository: AbstractStrategyRepository,
         output_dir: Path,
-        input_videos_dir: Path,
-        input_images_dir: Path,
         output_frames_dir: Path
     ):
         self.repository = repository
         self.output_dir = Path(output_dir)
-        self.input_videos_dir = Path(input_videos_dir)
-        self.input_images_dir = Path(input_images_dir)
         self.output_frames_dir = Path(output_frames_dir)
 
     def execute(self) -> Dict[str, Any]:
@@ -48,21 +44,9 @@ class SyncKnowledgeUseCase:
                 filename = source_file.get("filename", f"{basename}.mp4")
                 filetype = source_file.get("type", "video")
 
-                # Localizar mídia de entrada
-                media_path = None
-                if filetype == "video" and (self.input_videos_dir / filename).exists():
-                    media_path = self.input_videos_dir / filename
-                elif filetype == "image" and (self.input_images_dir / filename).exists():
-                    media_path = self.input_images_dir / filename
-                elif (self.input_videos_dir / filename).exists():
-                    media_path = self.input_videos_dir / filename
-                    filetype = "video"
-                elif (self.input_images_dir / filename).exists():
-                    media_path = self.input_images_dir / filename
-                    filetype = "image"
-
-                size_bytes = media_path.stat().st_size if media_path and media_path.exists() else 0
-                media_url = f"/api/media/input/{filetype}s/{filename}" if media_path else None
+                # A UI exibe somente URLs do Facebook — arquivos locais são apenas entrada do pipeline
+                size_bytes = source_file.get("size_bytes")
+                media_url = None
 
                 # Frames salvos
                 saved_frames = []

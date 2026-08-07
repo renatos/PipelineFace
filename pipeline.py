@@ -937,7 +937,7 @@ class KnowledgePipeline:
                     "type": filetype,
                     "extension": item["ext"],
                     "url": original_url,
-                    "media_url": f"/api/media/input/{filetype}s/{filename}" if (filepath.exists() and filetype == "video") else None,
+                    "media_url": None,  # UI exibe somente URLs do Facebook; arquivo local é apenas entrada do pipeline
                     "duration_seconds": duration_seconds,
                     "size_bytes": filepath.stat().st_size if filepath.exists() else 0
                 },

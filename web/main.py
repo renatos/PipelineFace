@@ -45,8 +45,6 @@ from web.presentation.routes import router as api_router, init_routes
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-INPUT_VIDEOS_DIR = DATA_DIR / "input" / "videos"
-INPUT_IMAGES_DIR = DATA_DIR / "input" / "images"
 OUTPUT_DIR = DATA_DIR / "output"
 OUTPUT_FRAMES_DIR = OUTPUT_DIR / "frames"
 
@@ -75,7 +73,7 @@ def create_app() -> FastAPI:
     profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
     post_repo = MongoProfilePostRepository(mongo_uri=MONGO_URI)
     pillar_repo = MongoSEOPillarRepository(mongo_uri=MONGO_URI)
-    media_service = MediaStreamingService(INPUT_VIDEOS_DIR, INPUT_IMAGES_DIR, OUTPUT_FRAMES_DIR)
+    media_service = MediaStreamingService(OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
     # 2. Instanciação dos Casos de Uso (Aplicação)
@@ -90,8 +88,6 @@ def create_app() -> FastAPI:
     sync_use_case = SyncKnowledgeUseCase(
         repository=mongo_repo,
         output_dir=OUTPUT_DIR,
-        input_videos_dir=INPUT_VIDEOS_DIR,
-        input_images_dir=INPUT_IMAGES_DIR,
         output_frames_dir=OUTPUT_FRAMES_DIR
     )
     get_strategies_use_case = GetStrategiesUseCase(mongo_repo)

@@ -6,7 +6,7 @@ Controladores e rotas FastAPI desacoplados que convertem requisições HTTP em c
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
 
 from web.domain.entities import Comment, ExecutionEvent, PipelineRun
@@ -474,16 +474,6 @@ def add_comment(basename: str, payload: CommentRequest):
         return created.model_dump()
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-
-@router.get("/api/media/input/videos/{filename}")
-def stream_video(filename: str, request: Request):
-    return media_service.stream_video(filename, request)
-
-
-@router.get("/api/media/input/images/{filename}")
-def serve_input_image(filename: str):
-    return media_service.serve_input_image(filename, mongo_db=mongo_db)
 
 
 @router.get("/api/media/frames/{basename}/{frame_name}")

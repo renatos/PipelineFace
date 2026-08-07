@@ -75,7 +75,8 @@ Coleção: `seo_knowledge`
   "input_file": {
     "filename": "Vídeo_1037805435633443.mp4",
     "type": "video",
-    "media_url": "/api/media/input/videos/Vídeo_1037805435633443.mp4",
+    "url": "https://www.facebook.com/reel/1037805435633443",
+    "media_url": null,
     "duration_seconds": 73,
     "size_bytes": 10485760
   },
