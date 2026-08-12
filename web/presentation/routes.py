@@ -13,8 +13,10 @@ from web.domain.entities import Comment, ExecutionEvent, PipelineRun
 from web.application.config_use_cases import GetAllConfigsUseCase, GetConfigUseCase, UpdateConfigUseCase
 from web.application.sync_use_case import SyncKnowledgeUseCase
 from web.application.strategy_use_cases import (
-    GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
+    GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase,
+    RunBrowserAutomationUseCase
 )
+
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
     RecordExecutionEventUseCase, GetExecutionEventsUseCase,
@@ -124,6 +126,7 @@ delete_post_use_case: DeletePostUseCase = None
 run_list_posts_use_case: RunListPostsUseCase = None
 run_download_pending_use_case: RunDownloadPendingUseCase = None
 run_download_single_post_use_case: RunDownloadSinglePostUseCase = None
+run_browser_automation_use_case: RunBrowserAutomationUseCase = None
 list_pillars_use_case: ListSEOPillarsUseCase = None
 save_pillar_use_case: SaveSEOPillarUseCase = None
 delete_pillar_use_case: DeleteSEOPillarUseCase = None
@@ -142,6 +145,7 @@ def init_routes(
     _list_posts_use_case, _get_single_post_use_case, _get_post_stats_use_case, _update_post_status_use_case,
     _delete_post_use_case,
     _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
+    _run_browser_automation_use_case,
     _list_pillars_use_case, _save_pillar_use_case, _delete_pillar_use_case,
     _media_service, _mongo_db
 ):
@@ -155,6 +159,7 @@ def init_routes(
     global list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case
     global delete_post_use_case
     global run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case
+    global run_browser_automation_use_case
     global list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case
     global media_service, mongo_db
 
@@ -186,6 +191,8 @@ def init_routes(
     run_list_posts_use_case = _run_list_posts_use_case
     run_download_pending_use_case = _run_download_pending_use_case
     run_download_single_post_use_case = _run_download_single_post_use_case
+    run_browser_automation_use_case = _run_browser_automation_use_case
+
     list_pillars_use_case = _list_pillars_use_case
     save_pillar_use_case = _save_pillar_use_case
     delete_pillar_use_case = _delete_pillar_use_case
@@ -440,6 +447,24 @@ def get_strategy_detail(basename: str):
     if not strategy:
         raise HTTPException(status_code=404, detail="Estratégia não encontrada")
     return strategy.model_dump()
+
+
+class BrowserAutomationRequest(BaseModel):
+    basename: Optional[str] = None
+    limit: int = 1
+    interactive: bool = False
+
+
+@router.post("/api/actions/browser-automation")
+def action_browser_automation(payload: BrowserAutomationRequest, background_tasks: BackgroundTasks):
+    """Dispara a automação autônoma de navegador (Browser-Use) para uma ou mais estratégias."""
+    status = get_process_status_use_case.execute()
+    if status.get("running"):
+        raise HTTPException(status_code=400, detail=f"Processo '{status.get('name')}' já está em execução.")
+
+    background_tasks.add_task(run_browser_automation_use_case.execute, payload.basename, payload.limit, payload.interactive)
+    return {"status": "started", "message": f"Automação de navegador iniciada em segundo plano para {payload.basename or f'{payload.limit} tarefas'}"}
+
 
 
 @router.patch("/api/strategies/{basename}/step")

@@ -8,6 +8,7 @@ data/processing/
 data/output/
 data/scraper/session/
 data/input/
+data/backups/
 
 # Configuração sensível
 .env

@@ -24,8 +24,10 @@ from web.application.config_use_cases import (
 )
 from web.application.sync_use_case import SyncKnowledgeUseCase
 from web.application.strategy_use_cases import (
-    GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase
+    GetStrategiesUseCase, GetStrategyDetailUseCase, ToggleStepUseCase, UpdateStatusUseCase, AddCommentUseCase,
+    RunBrowserAutomationUseCase
 )
+
 from web.application.process_use_case import (
     RunPipelineUseCase, RunScraperUseCase, StopProcessUseCase, GetProcessStatusUseCase,
     RecordExecutionEventUseCase, GetExecutionEventsUseCase,
@@ -123,6 +125,7 @@ def create_app() -> FastAPI:
     run_list_posts_use_case = RunListPostsUseCase(run_proc, config_repo)
     run_download_pending_use_case = RunDownloadPendingUseCase(run_proc, config_repo)
     run_download_single_post_use_case = RunDownloadSinglePostUseCase(run_proc, post_repo)
+    run_browser_automation_use_case = RunBrowserAutomationUseCase(run_proc)
     stop_process_use_case = StopProcessUseCase(process_runner.terminate_process)
     get_process_status_use_case = GetProcessStatusUseCase(process_runner.get_status)
 
@@ -138,9 +141,11 @@ def create_app() -> FastAPI:
         list_posts_use_case, get_single_post_use_case, get_post_stats_use_case, update_post_status_use_case,
         delete_post_use_case,
         run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case,
+        run_browser_automation_use_case,
         list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case,
         media_service, mongo_repo.db
     )
+
 
 
     app.include_router(api_router)

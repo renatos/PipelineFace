@@ -4,6 +4,7 @@ Strategy Use Cases — PipelineFace (Clean Architecture)
 Casos de uso para manipulação de estratégias de SEO e acompanhamento do progresso.
 """
 
+import sys
 from typing import List, Optional, Tuple
 from web.domain.entities import Strategy, Comment
 from web.domain.repositories import AbstractStrategyRepository
@@ -47,3 +48,21 @@ class AddCommentUseCase:
 
     def execute(self, basename: str, comment: Comment) -> Comment:
         return self.repository.add_comment(basename, comment)
+
+
+class RunBrowserAutomationUseCase:
+    def __init__(self, run_process_func):
+        self.run_process_func = run_process_func
+
+    def execute(self, basename: Optional[str] = None, limit: int = 1, interactive: bool = False):
+        cmd = [sys.executable if 'sys' in globals() else "python3", "scripts/host_browser_runner.py", "--limit", str(limit)]
+        if basename:
+            cmd.extend(["--basename", basename])
+        if interactive:
+            cmd.append("--interactive")
+        
+        name = f"Automação Browser-Use ({basename if basename else 'Lote'})"
+        self.run_process_func(cmd, name)
+        return {"status": "started", "message": f"Automação de navegador iniciada: {name}"}
+
+
