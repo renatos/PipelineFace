@@ -83,9 +83,11 @@ def ensure_chrome_cdp(cdp_port: int = 9222) -> bool:
 
 def build_system_prompt(dados_negocio: dict, strategy_title: str) -> str:
     """Gera o cabeçalho base do contexto da empresa para o prompt."""
-    return f"""Você é um assistente autônomo de navegação focado em SEO Local e Google Meu Negócio.
-Sua missão é executar a seguinte estratégia para o negócio "{dados_negocio.get('nome_empresa', 'Githa Studio de Beleza')}":
+    return f"""Você é um agente autônomo de automação de navegador (Browser Automation Agent) com controle direto sobre a janela do Google Chrome.
+Sua única função é executar as ações requeridas no navegador. Você possui ferramentas nativas para navegar, clicar em botões e preencher formulários.
+NUNCA responda dizendo que é um modelo de linguagem ou que não pode acessar a web. Você DEVE obrigatoriamente executar ações no navegador (como navigate, click_element, input_text).
 
+EMPRESA ALVO: "{dados_negocio.get('nome_empresa', 'Githa Studio de Beleza')}"
 OBJETIVO DA ESTRATÉGIA:
 {strategy_title}
 
@@ -103,10 +105,7 @@ DADOS OFICIAIS DO NEGÓCIO PARA PREENCHIMENTO SE NECESSÁRIO:
 
 class BrowserUseChatOllama(ChatOllama):
     provider: str = "ollama"
-
-    @property
-    def model_name(self) -> str:
-        return self.model or "qwen2.5:7b"
+    model_name: str = "qwen2.5:7b"
 
 
 async def execute_agent_with_timeout(agent: Agent, timeout_seconds: int = 300) -> tuple[bool, str]:
