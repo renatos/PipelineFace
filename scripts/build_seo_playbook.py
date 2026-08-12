@@ -94,7 +94,7 @@ def get_mongo_client() -> MongoClient:
 
 def query_ollama(prompt: str, system_prompt: str = None) -> str:
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
-    text_model = os.environ.get("TEXT_MODEL", "qwen2.5:3b")
+    text_model = os.environ.get("TEXT_MODEL", "qwen2.5:7b")
 
     messages = []
     if system_prompt:

@@ -44,7 +44,7 @@ _ENV_DEFAULTS = {
     "ollama_url":   os.environ.get("OLLAMA_URL",   "http://localhost:11434/api/chat"),
     "webhook_url":  os.environ.get("WEBHOOK_URL",  "http://localhost:8000/api/webhooks/execution-event"),
     "vision_model": os.environ.get("VISION_MODEL", "moondream"),
-    "text_model":   os.environ.get("TEXT_MODEL",   "qwen2.5:3b"),
+    "text_model":   os.environ.get("TEXT_MODEL",   "qwen2.5:7b"),
     "whisper_model":os.environ.get("WHISPER_MODEL","base"),
     "fps_frame_extraction": "1/8",
     "max_ocr_frames": "3",

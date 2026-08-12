@@ -81,7 +81,7 @@ pull_model() {
 }
 
 pull_model "moondream"
-pull_model "qwen2.5:3b"
+pull_model "qwen2.5:7b"
 
 echo -e "${GREEN}✅ Modelos prontos (ou baixando em background no host).${NC}"
 

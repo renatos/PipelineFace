@@ -56,21 +56,24 @@ def ensure_chrome_cdp(cdp_port: int = 9222) -> bool:
     if is_port_open(cdp_port):
         return True
 
-    print("🌐 Iniciando automaticamente o seu Google Chrome com a porta de depuração (9222)...")
+    print(f"🌐 Iniciando automaticamente o seu Google Chrome com a porta de depuração ({cdp_port})...")
     chrome_bin = "google-chrome"
     for p in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]:
         if os.path.exists(p):
             chrome_bin = p
             break
 
+    profile_dir = os.path.expanduser("~/.config/google-chrome-automation")
+    os.makedirs(profile_dir, exist_ok=True)
+
     proc = subprocess.Popen(
-        [chrome_bin, f"--remote-debugging-port={cdp_port}"],
+        [chrome_bin, f"--remote-debugging-port={cdp_port}", f"--user-data-dir={profile_dir}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
     atexit.register(lambda: proc.terminate() if proc.poll() is None else None)
 
-    for _ in range(10):
+    for _ in range(15):
         if is_port_open(cdp_port):
             return True
         time.sleep(0.5)
@@ -175,17 +178,10 @@ async def run_automation_task(task_doc: dict, visible: bool = True, interactive:
         print(f"🔗 Conectado ao Google Chrome via CDP (porta 9222)!")
         profile = BrowserProfile(cdp_url=cdp_url)
     else:
-        print(f"📂 Fallback: Abrindo Google Chrome com perfil de usuário em {user_chrome_dir}...")
-        chrome_path = None
-        for p in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]:
-            if os.path.exists(p):
-                chrome_path = p
-                break
+        print("🖥️ Abrindo janela visível do navegador para a automação...")
         profile = BrowserProfile(
-            disable_security=True,
-            executable_path=chrome_path,
-            user_data_dir=user_chrome_dir,
-            headless=not visible
+            headless=not visible,
+            disable_security=True
         )
 
     browser = Browser(browser_profile=profile)

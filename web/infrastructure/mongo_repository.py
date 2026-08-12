@@ -41,7 +41,7 @@ APP_CONFIG_DEFAULTS = [
     {"key": "vision_model", "group": "models", "value": "moondream",
      "value_type": "string", "label": "Modelo de Visão (frames)",
      "description": "Modelo Ollama usado para análise visual de frames e imagens"},
-    {"key": "text_model", "group": "models", "value": "qwen2.5:3b",
+    {"key": "text_model", "group": "models", "value": "qwen2.5:7b",
      "value_type": "string", "label": "Modelo de Texto (SEO)",
      "description": "Modelo Ollama usado para extração de conhecimento em SEO"},
     {"key": "whisper_model", "group": "models", "value": "base",

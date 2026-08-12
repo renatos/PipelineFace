@@ -71,10 +71,10 @@ PASSO A PASSO DA ESTRATÉGIA:
         
         @property
         def model_name(self) -> str:
-            return self.model or "qwen2.5:3b"
+            return self.model or "qwen2.5:7b"
 
     llm = BrowserUseChatOllama(
-        model=os.environ.get("TEXT_MODEL", "qwen2.5:3b"),
+        model=os.environ.get("TEXT_MODEL", "qwen2.5:7b"),
         base_url=ollama_url,
         temperature=0.1
     )
