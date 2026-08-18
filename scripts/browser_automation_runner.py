@@ -14,10 +14,10 @@ from pymongo import MongoClient
 
 try:
     from browser_use import Agent
-    from langchain_ollama import ChatOllama
+    from browser_use.llm.ollama.chat import ChatOllama
 except ImportError as e:
     print(f"[!] Faltam pacotes Python para o Browser-Use: {e}")
-    print("Certifique-se de que o container foi reconstruído com os pacotes 'browser-use' e 'langchain-ollama'.")
+    print("Certifique-se de que o container foi reconstruído com os pacotes 'browser-use' e 'ollama'.")
     sys.exit(1)
 
 
@@ -62,27 +62,20 @@ PASSO A PASSO DA ESTRATÉGIA:
 
     # Configurar o LLM Ollama local
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    # Remover o sufixo /api/chat se presente, pois o ChatOllama usa a URL base
     if "/api/chat" in ollama_url:
         ollama_url = ollama_url.replace("/api/chat", "")
 
-    class BrowserUseChatOllama(ChatOllama):
-        provider: str = "ollama"
-        
-        @property
-        def model_name(self) -> str:
-            return self.model or "qwen2.5:7b"
-
-    llm = BrowserUseChatOllama(
+    llm = ChatOllama(
         model=os.environ.get("TEXT_MODEL", "qwen2.5:7b"),
-        base_url=ollama_url,
-        temperature=0.1
+        host=ollama_url,
     )
-
 
     agent = Agent(
         task=prompt,
-        llm=llm
+        llm=llm,
+        use_vision=False,
+        max_failures=5,
+        max_actions_per_step=3,
     )
 
 

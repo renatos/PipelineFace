@@ -20,7 +20,7 @@ from pymongo import MongoClient
 
 try:
     from browser_use import Agent, Browser, BrowserProfile
-    from langchain_ollama import ChatOllama
+    from browser_use.llm.ollama.chat import ChatOllama
 except Exception as e:
     print(f"\n[!] Erro ao carregar dependências no ambiente hospedeiro: {e}")
     sys.exit(1)
@@ -103,9 +103,6 @@ DADOS OFICIAIS DO NEGÓCIO PARA PREENCHIMENTO SE NECESSÁRIO:
 """
 
 
-class BrowserUseChatOllama(ChatOllama):
-    provider: str = "ollama"
-    model_name: str = "qwen2.5:7b"
 
 
 async def execute_agent_with_timeout(agent: Agent, timeout_seconds: int = 300) -> tuple[bool, str]:
@@ -164,10 +161,9 @@ async def run_automation_task(task_doc: dict, visible: bool = True, interactive:
         print(f"❌ {msg}")
         return False, msg
 
-    llm = BrowserUseChatOllama(
+    llm = ChatOllama(
         model=os.environ.get("TEXT_MODEL", "qwen2.5:7b"),
-        base_url=ollama_url,
-        temperature=0.1
+        host=ollama_url,
     )
 
     cdp_url = os.environ.get("CHROME_CDP_URL", "http://127.0.0.1:9222")
@@ -201,7 +197,9 @@ async def run_automation_task(task_doc: dict, visible: bool = True, interactive:
                 task=step_prompt,
                 llm=llm,
                 browser=browser,
-                max_failures=3
+                use_vision=False,
+                max_failures=5,
+                max_actions_per_step=3,
             )
 
             success, log_msg = await execute_agent_with_timeout(agent, timeout_seconds=timeout_seconds)
@@ -234,7 +232,9 @@ async def run_automation_task(task_doc: dict, visible: bool = True, interactive:
             task=full_prompt,
             llm=llm,
             browser=browser,
-            max_failures=3
+            use_vision=False,
+            max_failures=5,
+            max_actions_per_step=3,
         )
 
         return await execute_agent_with_timeout(agent, timeout_seconds=timeout_seconds)
