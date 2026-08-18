@@ -51,23 +51,40 @@ def is_port_open(port: int = 9222) -> bool:
         return False
 
 
-def ensure_chrome_cdp(cdp_port: int = 9222) -> bool:
-    """Garante que o Chrome esteja rodando com a porta de depuração CDP aberta."""
+def ensure_chrome_cdp(cdp_port: int = 9222, user_data_dir: str = None, profile_name: str = "Default") -> bool:
+    """Garante que o Chrome esteja rodando com a porta de depuração CDP aberta usando o perfil real do usuário."""
     if is_port_open(cdp_port):
         return True
 
-    print(f"🌐 Iniciando automaticamente o seu Google Chrome com a porta de depuração ({cdp_port})...")
+    if user_data_dir is None:
+        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", os.path.expanduser("~/.config/google-chrome"))
+
+    print(f"🌐 Iniciando Google Chrome com seu perfil ativo ({profile_name}) na porta CDP ({cdp_port})...")
     chrome_bin = "google-chrome"
     for p in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]:
         if os.path.exists(p):
             chrome_bin = p
             break
 
-    profile_dir = os.path.expanduser("~/.config/google-chrome-automation")
-    os.makedirs(profile_dir, exist_ok=True)
+    cmd = [
+        chrome_bin,
+        f"--remote-debugging-port={cdp_port}",
+        f"--user-data-dir={user_data_dir}",
+    ]
+    if profile_name:
+        cmd.append(f"--profile-directory={profile_name}")
+
+    # Verificar se o Chrome já está rodando sem CDP
+    try:
+        pgrep = subprocess.run(["pgrep", "-f", "google-chrome"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if pgrep.returncode == 0 and not is_port_open(cdp_port):
+            print("⚠️ Uma instância do Google Chrome já está aberta sem a porta CDP.")
+            print("💡 Dica: Para usar sua sessão ativa, feche o Chrome antes ou inicie com --remote-debugging-port=9222")
+    except Exception:
+        pass
 
     proc = subprocess.Popen(
-        [chrome_bin, f"--remote-debugging-port={cdp_port}", f"--user-data-dir={profile_dir}"],
+        cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
@@ -146,7 +163,14 @@ async def execute_agent_with_timeout(agent: Agent, timeout_seconds: int = 300) -
         return False, msg
 
 
-async def run_automation_task(task_doc: dict, visible: bool = True, interactive: bool = False, timeout_seconds: int = 300):
+async def run_automation_task(
+    task_doc: dict,
+    visible: bool = True,
+    interactive: bool = False,
+    timeout_seconds: int = 300,
+    profile_name: str = "Default",
+    user_data_dir: str = None
+):
     strategy_title = task_doc.get("titulo_estrategia", "")
     passos = task_doc.get("passos_automacao", [])
     dados_negocio = task_doc.get("dados_negocio_preenchidos", {})
@@ -167,10 +191,9 @@ async def run_automation_task(task_doc: dict, visible: bool = True, interactive:
     )
 
     cdp_url = os.environ.get("CHROME_CDP_URL", "http://127.0.0.1:9222")
-    user_chrome_dir = os.path.expanduser("~/.config/google-chrome")
 
-    if ensure_chrome_cdp(9222):
-        print(f"🔗 Conectado ao Google Chrome via CDP (porta 9222)!")
+    if ensure_chrome_cdp(9222, user_data_dir=user_data_dir, profile_name=profile_name):
+        print(f"🔗 Conectado ao Google Chrome com perfil ativo '{profile_name}' via CDP (porta 9222)!")
         profile = BrowserProfile(cdp_url=cdp_url)
     else:
         print("🖥️ Abrindo janela visível do navegador para a automação...")
@@ -263,6 +286,8 @@ def main():
     parser.add_argument("--headless", action="store_true", help="Rodar navegador de forma oculta (sem janela)")
     parser.add_argument("--interactive", "-i", action="store_true", help="Modo interativo: pausa e aguarda confirmação a cada passo")
     parser.add_argument("--timeout", type=int, default=300, help="Timeout em segundos por tarefa (padrão: 300s)")
+    parser.add_argument("--profile", default=os.environ.get("CHROME_PROFILE", "Default"), help="Nome da pasta do perfil do Chrome (padrão: Default, ex: 'Profile 3')")
+    parser.add_argument("--user-data-dir", default=os.environ.get("CHROME_USER_DATA_DIR", None), help="Diretório de dados do Chrome (padrão: ~/.config/google-chrome)")
 
     args = parser.parse_args()
 
@@ -281,6 +306,7 @@ def main():
         return
 
     print(f"=== INICIANDO BROWSER-USE NO HOSPEDEIRO ({len(tasks)} tarefas) ===")
+    print(f"👤 Perfil Chrome selecionado: {args.profile}")
 
     for task in tasks:
         doc_id = task["_id"]
@@ -293,7 +319,9 @@ def main():
             task,
             visible=not args.headless,
             interactive=args.interactive,
-            timeout_seconds=args.timeout
+            timeout_seconds=args.timeout,
+            profile_name=args.profile,
+            user_data_dir=args.user_data_dir
         ))
 
         status_final = "executado" if success else "erro"
