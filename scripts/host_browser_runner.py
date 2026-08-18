@@ -51,15 +51,55 @@ def is_port_open(port: int = 9222) -> bool:
         return False
 
 
+def sync_user_chrome_profile(src_base: str, target_base: str, profile_name: str = "Default"):
+    """Sincroniza cookies, logins e dados de sessão do perfil real para o diretório de depuração CDP."""
+    import shutil
+    try:
+        os.makedirs(target_base, exist_ok=True)
+        local_state_src = os.path.join(src_base, "Local State")
+        local_state_tgt = os.path.join(target_base, "Local State")
+        if os.path.exists(local_state_src):
+            try:
+                shutil.copy2(local_state_src, local_state_tgt)
+            except Exception:
+                pass
+
+        src_prof = os.path.join(src_base, profile_name)
+        target_prof = os.path.join(target_base, profile_name)
+        os.makedirs(target_prof, exist_ok=True)
+
+        items_to_sync = [
+            'Cookies', 'Network', 'Login Data', 'Web Data', 'Preferences',
+            'Secure Preferences', 'Local Storage', 'IndexedDB', 'History', 'Extensions', 'Extension State'
+        ]
+
+        for item in items_to_sync:
+            s = os.path.join(src_prof, item)
+            t = os.path.join(target_prof, item)
+            if os.path.exists(s):
+                try:
+                    if os.path.isdir(s):
+                        shutil.copytree(s, t, symlinks=True, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(s, t)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"⚠️ Aviso ao sincronizar perfil do Chrome: {e}")
+
+
 def ensure_chrome_cdp(cdp_port: int = 9222, user_data_dir: str = None, profile_name: str = "Default") -> bool:
-    """Garante que o Chrome esteja rodando com a porta de depuração CDP aberta usando o perfil real do usuário."""
+    """Garante que o Chrome esteja rodando com a porta de depuração CDP aberta usando os dados do perfil do usuário."""
     if is_port_open(cdp_port):
         return True
 
-    if user_data_dir is None:
-        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", os.path.expanduser("~/.config/google-chrome"))
+    real_user_dir = user_data_dir or os.environ.get("CHROME_USER_DATA_DIR", os.path.expanduser("~/.config/google-chrome"))
+    auto_user_dir = os.path.expanduser("~/.config/google-chrome-automation")
 
-    print(f"🌐 Iniciando Google Chrome com seu perfil ativo ({profile_name}) na porta CDP ({cdp_port})...")
+    print(f"🔄 Sincronizando credenciais e logins do perfil '{profile_name}'...")
+    sync_user_chrome_profile(real_user_dir, auto_user_dir, profile_name)
+
+    print(f"🌐 Iniciando Google Chrome com seu perfil ativo na porta CDP ({cdp_port})...")
     chrome_bin = "google-chrome"
     for p in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"]:
         if os.path.exists(p):
@@ -69,19 +109,10 @@ def ensure_chrome_cdp(cdp_port: int = 9222, user_data_dir: str = None, profile_n
     cmd = [
         chrome_bin,
         f"--remote-debugging-port={cdp_port}",
-        f"--user-data-dir={user_data_dir}",
+        f"--user-data-dir={auto_user_dir}",
     ]
     if profile_name:
         cmd.append(f"--profile-directory={profile_name}")
-
-    # Verificar se o Chrome já está rodando sem CDP
-    try:
-        pgrep = subprocess.run(["pgrep", "-f", "google-chrome"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if pgrep.returncode == 0 and not is_port_open(cdp_port):
-            print("⚠️ Uma instância do Google Chrome já está aberta sem a porta CDP.")
-            print("💡 Dica: Para usar sua sessão ativa, feche o Chrome antes ou inicie com --remote-debugging-port=9222")
-    except Exception:
-        pass
 
     proc = subprocess.Popen(
         cmd,
@@ -90,7 +121,7 @@ def ensure_chrome_cdp(cdp_port: int = 9222, user_data_dir: str = None, profile_n
     )
     atexit.register(lambda: proc.terminate() if proc.poll() is None else None)
 
-    for _ in range(15):
+    for _ in range(20):
         if is_port_open(cdp_port):
             return True
         time.sleep(0.5)
