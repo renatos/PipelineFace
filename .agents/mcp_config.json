@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--user-data-dir=/home/renato/.config/google-chrome-automation"
+      ]
+    },
+    "spec-driven-steroids": {
+      "args": [
+        "/usr/local/lib/node_modules/spec-driven-steroids/dist/mcp/index.js"
+      ],
+      "command": "node",
+      "disabled": true
+    },
+    "th0th": {
+      "command": "/home/renato/.gemini/antigravity/scratch/th0th/scripts/start-mcp-environment.sh"
+    }
+  }
+}
