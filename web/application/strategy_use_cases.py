@@ -51,18 +51,10 @@ class AddCommentUseCase:
 
 
 class RunBrowserAutomationUseCase:
-    def __init__(self, run_process_func):
+    def __init__(self, run_process_func=None):
         self.run_process_func = run_process_func
 
     def execute(self, basename: Optional[str] = None, limit: int = 1, interactive: bool = False):
-        cmd = [sys.executable if 'sys' in globals() else "python3", "scripts/host_browser_runner.py", "--limit", str(limit)]
-        if basename:
-            cmd.extend(["--basename", basename])
-        if interactive:
-            cmd.append("--interactive")
-        
-        name = f"Automação Browser-Use ({basename if basename else 'Lote'})"
-        self.run_process_func(cmd, name)
-        return {"status": "started", "message": f"Automação de navegador iniciada: {name}"}
+        return {"status": "disabled", "message": "A automação de navegador via LLM local foi descontinuada em favor do Chrome DevTools MCP."}
 
 

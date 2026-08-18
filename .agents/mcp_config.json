@@ -5,7 +5,9 @@
       "args": [
         "-y",
         "chrome-devtools-mcp@latest",
-        "--user-data-dir=/home/renato/.config/google-chrome-automation"
+        "--user-data-dir=/home/renato/.config/google-chrome-automation",
+        "--ignore-default-chrome-arg=--enable-automation",
+        "--chrome-arg=--disable-blink-features=AutomationControlled"
       ]
     },
     "spec-driven-steroids": {
