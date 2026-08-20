@@ -142,39 +142,94 @@ WP-Admin Edit: https://studiogitha.com/wp-admin/post.php?post=262&action=edit
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
+  "@graph": [
     {
-      "@type": "Question",
-      "name": "Quantas sessões de microagulhamento são necessárias para ver resultados?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "A partir da 1ª sessão já é visível um aumento no viço e luminosidade. Para tratar cicatrizes de acne e linhas de expressão com microagulhamento em BH, recomenda-se em média de 3 a 5 sessões com intervalo de 28 a 30 dias."
+      "@type": "Service",
+      "@id": "https://studiogitha.com/peeling-e-microagulhamento-em-bh/#service",
+      "name": "Peelings e Microagulhamento em BH",
+      "serviceType": "Renovação Celular e Indução de Colágeno",
+      "description": "Tratamentos avançados para clareamento de melasma, cicatrizes de acne e firmeza facial com ácidos e drug delivery.",
+      "url": "https://studiogitha.com/peeling-e-microagulhamento-em-bh/",
+      "provider": {
+        "@type": "BeautySalon",
+        "name": "Studio Githa",
+        "url": "https://studiogitha.com",
+        "telephone": "+5531991696979",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Rua Juraci, 88 - Sala 102",
+          "addressLocality": "Belo Horizonte",
+          "addressRegion": "MG",
+          "postalCode": "30421-181",
+          "addressCountry": "BR"
+        }
+      },
+      "areaServed": {
+        "@type": "City",
+        "name": "Belo Horizonte"
+      },
+      "hasOfferCatalog": {
+        "@type": "OfferCatalog",
+        "name": "Procedimentos de Renovação Cutânea",
+        "itemListElement": [
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Peeling Químico Facial"
+            },
+            "price": "300.00",
+            "priceCurrency": "BRL"
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Microagulhamento com Drug Delivery"
+            },
+            "price": "200.00",
+            "priceCurrency": "BRL"
+          }
+        ]
       }
     },
     {
-      "@type": "Question",
-      "name": "O procedimento de microagulhamento ou peeling dói?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Não. Utilizamos anestésicos tópicos específicos antes da aplicação para assegurar que a sessão de peeling e microagulhamento seja confortável e tranquila do início ao fim."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "A pele descama muito após o peeling químico?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "A descamação depende da profundidade do ácido utilizado. Nos peelings superficiais e médios, ocorre uma descamação leve e controlada entre o 3º e 5º dia pós-procedimento."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Quais cuidados devo ter antes e depois do procedimento?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Evite exposição solar intensa 7 dias antes e após a sessão, suspenda o uso de ácidos em casa 3 dias antes e utilize protetor solar com FPS 50 a cada 3 horas diariamente."
-      }
+      "@type": "FAQPage",
+      "@id": "https://studiogitha.com/peeling-e-microagulhamento-em-bh/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Quantas sessões de microagulhamento são necessárias para ver resultados?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A partir da 1ª sessão já é visível um aumento no viço e luminosidade. Para tratar cicatrizes de acne e linhas de expressão com microagulhamento em BH, recomenda-se em média de 3 a 5 sessões com intervalo de 28 a 30 dias."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "O procedimento de microagulhamento ou peeling dói?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Não. Utilizamos anestésicos tópicos específicos antes da aplicação para assegurar que a sessão de peeling e microagulhamento seja confortável e tranquila do início ao fim."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "A pele descama muito após o peeling químico?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A descamação depende da profundidade do ácido utilizado. Nos peelings superficiais e médios, ocorre uma descamação leve e controlada entre o 3º e 5º dia pós-procedimento."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Quais cuidados devo ter antes e depois do procedimento?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Evite exposição solar intensa 7 dias antes e após a sessão, suspenda o uso de ácidos em casa 3 dias antes e utilize protetor solar com FPS 50 a cada 3 horas diariamente."
+          }
+        }
+      ]
     }
   ]
 }
