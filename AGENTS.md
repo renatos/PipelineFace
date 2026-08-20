@@ -152,13 +152,14 @@ The repository includes a dedicated autonomous execution skill for Studio Githa 
 
 ### Core Workflow:
 1. **Context-First Audit**: Research completed strategies via CLI/API and check existing WordPress pages/drafts and Google Search Console indexation to prevent duplicates.
-2. **Prioritize Pending**: Fetch top business priorities (`/api/seo/priorities?status=pending`) cross-referenced with PostgreSQL real metrics.
-3. **Load Execution Plan**: Request enriched plan (`/api/seo/execution-plan/{basename}`).
-4. **Browser Execution via Chrome DevTools MCP**:
+2. **Prioritize Pending**: Fetch top business priorities (`/api/seo/priorities?status=pending` or `manage_seo_knowledge.py --pending`).
+3. **Mark In-Progress Immediately**: Set strategy status to `in_progress` (`manage_seo_knowledge.py --in-progress <basename>`) as soon as selected to avoid mixing what is being done with what is pending.
+4. **Load Execution Plan**: Request enriched plan (`/api/seo/execution-plan/{basename}`).
+5. **Browser Execution via Chrome DevTools MCP / REST API**:
    - Build Dark Luxury pages on WordPress (`https://studiogitha.com/wp-admin`).
    - Ensure Rank Math SEO Score **>= 80/100 (Verde)** with single local keyword mention in hero.
    - Configure LocalBusiness Schema.org and request indexing in Google Search Console.
-5. **Atomic Single-Strategy Update**: Mark execution 1-by-1 (`/api/seo/mark-applied/{basename}` or CLI).
+6. **Atomic Single-Strategy Update**: Mark execution as completed 1-by-1 (`manage_seo_knowledge.py --mark <basename>` or `/api/seo/mark-applied/{basename}`).
 
 ### Skill Auxiliary Scripts (`scripts/SEO/`):
 
@@ -169,6 +170,7 @@ The repository includes a dedicated autonomous execution skill for Studio Githa 
 | **List All Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --list` | Lists all cataloged SEO strategies with current status and score. |
 | **List Completed Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --implemented` | Lists only implemented strategies with audit notes and applied dates. |
 | **List Pending Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --pending` | Lists only pending strategies waiting for execution. |
+| **Mark Strategy In-Progress** | `python3 scripts/SEO/manage_seo_knowledge.py --in-progress <basename> --notes "..."` | Sets a strategy's status to `in_progress` (EM_ANDAMENTO) immediately upon selection. |
 | **Inspect Strategy Details** | `python3 scripts/SEO/manage_seo_knowledge.py --detail <basename>` | Displays full steps, difficulty, estimated time, and implementation state. |
-| **Mark Strategy as Done** | `python3 scripts/SEO/manage_seo_knowledge.py --mark <basename> --steps 0,1,2,3,4 --notes "..."` | Updates a strategy's `user_implementation` status atomically (1-by-1). |
+| **Mark Strategy as Done** | `python3 scripts/SEO/manage_seo_knowledge.py --mark <basename> --steps 0,1,2,3,4 --notes "..."` | Updates a strategy's `user_implementation` status to `completed` atomically (1-by-1). |
 

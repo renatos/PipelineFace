@@ -12,11 +12,12 @@ Esta skill orienta agentes IA na execução automatizada de estratégias de SEO 
 ## 🎯 Visão Geral do Fluxo
 
 ```
-1. Pesquisar & Auditar o que já foi implementado (/api/seo/priorities?status=completed ou manage_seo_knowledge.py --implemented)
-2. Obter Prioridades Pendentes e Contexto de Negócio (/api/seo/priorities?status=pending)
-3. Gerar Plano Enriquecido (/api/seo/execution-plan/{basename})
-4. Executar Ações no Browser via Chrome DevTools MCP
-5. Atualizar Progresso no PipelineFace (/api/seo/mark-applied/{basename})
+1. Pesquisar & Auditar o que já foi implementado (manage_seo_knowledge.py --implemented)
+2. Obter Prioridades Pendentes e Escolher a Estratégia (manage_seo_knowledge.py --pending)
+3. Marcar Imediatamente como EM_ANDAMENTO (manage_seo_knowledge.py --in-progress <basename>)
+4. Gerar Plano Enriquecido & Carregar Dados (/api/seo/execution-plan/{basename})
+5. Executar Ações no Browser via Chrome DevTools MCP / WordPress REST API
+6. Atualizar Progresso Final como COMPLETED (manage_seo_knowledge.py --mark <basename>)
 ```
 
 ---
@@ -44,15 +45,24 @@ Antes de planejar ou executar qualquer nova ação, o agente DEVE pesquisar o hi
    - **Google Search Console**:
      - Verificar se as URLs criadas anteriormente já foram submetidas ou indexadas.
 
-3. **Mapear Lacunas e Decidir Próxima Ação**:
+3. **Mapear Lacunas e Escolher Próxima Ação**:
    - Comparar o catálogo de serviços do Studio Githa com o que já foi publicado.
    - Selecionar a próxima estratégia pendente de maior impacto.
 
 ### 2. Obter Prioridades Pendentes e Contexto do Studio Githa
-- Chamar endpoint `GET http://localhost:8000/api/seo/priorities?status=pending` (ou `python3 scripts/SEO/manage_seo_knowledge.py --pending`) para listar apenas as estratégias pendentes.
+- Chamar `python3 scripts/SEO/manage_seo_knowledge.py --pending` (ou endpoint `GET http://localhost:8000/api/seo/priorities?status=pending`) para listar apenas as estratégias pendentes.
 - O sistema cruza os serviços mais rentáveis/demandados do Githa (ex: *Design de Sobrancelhas*, *Limpeza de Pele*, *Extensão de Cílios*) com os pilares de SEO Local, On-Page e GEO.
 
-### 3. Carregar o Plano de Execução Enriquecido
+### 3. Marcar Imediatamente a Estratégia como EM_ANDAMENTO (In Progress)
+> [!IMPORTANT]
+> **Regra Obrigatória:** Assim que uma dica/estratégia for escolhida para execução com o usuário, o agente DEVE marcar seu status imediatamente como `in_progress` (`EM_ANDAMENTO`) no MongoDB antes de começar a codificar, editar páginas ou disparar ações no navegador. Isso evita que estratégias em execução se misturem com as que ainda faltam implementar.
+
+- **Comando Obrigatório via CLI**:
+  ```bash
+  python3 scripts/SEO/manage_seo_knowledge.py --in-progress <BASENAME> --notes "Iniciando implementação da estratégia..."
+  ```
+
+### 4. Carregar o Plano de Execução Enriquecido
 - Chamar `GET http://localhost:8000/api/seo/execution-plan/{basename}`.
 - Cada passo retorna:
   - `action_type`: `browser_action` | `llm_generatable` | `data_enrichable` | `manual_only`

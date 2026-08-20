@@ -118,16 +118,35 @@ def mark_strategy(basename: str, step_indices: list, notes: str):
     else:
         print(f"⚠️ Nenhuma estratégia encontrada ou modificada com basename: {basename}")
 
+def mark_in_progress(basename: str, notes: str = "Iniciando execução da estratégia..."):
+    db = get_db()
+    res = db.seo_knowledge.update_one(
+        {"basename": basename},
+        {
+            "$set": {
+                "user_implementation.status": "in_progress",
+                "user_implementation.comments": notes,
+                "user_implementation.started_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+        }
+    )
+    if res.modified_count > 0:
+        print(f"🔄 Estratégia {basename} atualizada para IN_PROGRESS (EM_ANDAMENTO) com sucesso!")
+    else:
+        print(f"⚠️ Nenhuma estratégia encontrada ou modificada com basename: {basename}")
+
 def main():
     parser = argparse.ArgumentParser(description="Gerenciar e auditar estratégias seo_knowledge 1 a 1")
     parser.add_argument("--list", action="store_true", help="Listar todas as estratégias e status")
     parser.add_argument("--implemented", action="store_true", help="Listar apenas estratégias já implementadas (status=completed)")
     parser.add_argument("--pending", action="store_true", help="Listar apenas estratégias pendentes de implementação")
-    parser.add_argument("--status", type=str, choices=["completed", "pending"], help="Filtrar estratégias por status")
+    parser.add_argument("--status", type=str, choices=["completed", "pending", "in_progress"], help="Filtrar estratégias por status")
     parser.add_argument("--detail", type=str, help="Exibir detalhes completos de uma estratégia pelo basename")
+    parser.add_argument("--in-progress", type=str, dest="in_progress", help="Basename da estratégia a marcar como EM_ANDAMENTO (in_progress)")
     parser.add_argument("--mark", type=str, help="Basename da estratégia a marcar como concluída")
     parser.add_argument("--steps", type=str, default="0,1,2,3,4", help="Índices dos passos concluídos separados por vírgula (ex: 0,1,2,3)")
-    parser.add_argument("--notes", type=str, default="Otimização concluída.", help="Notas de auditoria da implementação")
+    parser.add_argument("--notes", type=str, default="Otimização em andamento.", help="Notas de auditoria da implementação")
     
     args = parser.parse_args()
     if args.list:
@@ -140,6 +159,8 @@ def main():
         list_strategies(status_filter=args.status)
     elif args.detail:
         show_strategy_detail(args.detail)
+    elif args.in_progress:
+        mark_in_progress(args.in_progress, args.notes)
     elif args.mark:
         steps = [int(x.strip()) for x in args.steps.split(",") if x.strip().isdigit()]
         mark_strategy(args.mark, steps, args.notes)
