@@ -84,6 +84,8 @@ def main():
     payload = {
         "content": clean_html
     }
+    if header_meta.get("template"):
+        payload["template"] = header_meta.get("template")
     if args.status:
         payload["status"] = args.status
     if args.title:

@@ -1,12 +1,13 @@
 # 🌐 Páginas do Site Studio Githa (`https://studiogitha.com`)
 
-> **Última sincronização:** 20/08/2026 08:25:25  
-> **Total de Páginas:** 13
+> **Última sincronização:** 20/08/2026 09:35:45  
+> **Total de Páginas:** 14
 
 ## 📋 Índice de Páginas
 
 | ID | Status | Título | Slug | Arquivo HTML | Link no WP-Admin |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| `330` | **PUBLISH** | Studio Githa | Estética Facial, Sobrancelhas e Bem-Estar em BH | `inicio` | [`pages/inicio.html`](pages/inicio.html) | [Editar](https://studiogitha.com/wp-admin/post.php?post=330&action=edit) |
 | `319` | **DRAFT** | Página de Teste Automatizada | `teste-automatizado-seo` | [`pages/teste-automatizado-seo.html`](pages/teste-automatizado-seo.html) | [Editar](https://studiogitha.com/wp-admin/post.php?post=319&action=edit) |
 | `318` | **DRAFT** | Página Teste REST API (Rascunho) | Studio Githa | `teste-integracao-rest-api` | [`pages/teste-integracao-rest-api.html`](pages/teste-integracao-rest-api.html) | [Editar](https://studiogitha.com/wp-admin/post.php?post=318&action=edit) |
 | `262` | **PUBLISH** | Peeling e Microagulhamento em BH: Renovação | Studio Githa | `peeling-e-microagulhamento-em-bh` | [`pages/peeling-e-microagulhamento-em-bh.html`](pages/peeling-e-microagulhamento-em-bh.html) | [Editar](https://studiogitha.com/wp-admin/post.php?post=262&action=edit) |
