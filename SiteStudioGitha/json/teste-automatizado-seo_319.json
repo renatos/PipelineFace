@@ -1,0 +1,100 @@
+{
+  "id": 319,
+  "date": "2026-08-20T11:19:44",
+  "date_gmt": "2026-08-20T11:19:44",
+  "guid": {
+    "rendered": "https://studiogitha.com/?page_id=319"
+  },
+  "modified": "2026-08-20T11:19:44",
+  "modified_gmt": "2026-08-20T11:19:44",
+  "slug": "teste-automatizado-seo",
+  "status": "draft",
+  "type": "page",
+  "link": "https://studiogitha.com/?page_id=319",
+  "title": {
+    "rendered": "Página de Teste Automatizada"
+  },
+  "content": {
+    "rendered": "<h1>Página de Teste Automatizada</h1>\n<p>Página gerada automaticamente.</p>\n",
+    "protected": false
+  },
+  "excerpt": {
+    "rendered": "<p>Página de Teste Automatizada Página gerada automaticamente.</p>\n",
+    "protected": false
+  },
+  "author": 1,
+  "featured_media": 0,
+  "parent": 0,
+  "menu_order": 0,
+  "comment_status": "closed",
+  "ping_status": "closed",
+  "template": "elementor_canvas",
+  "meta": {
+    "footnotes": ""
+  },
+  "class_list": [
+    "post-319",
+    "page",
+    "type-page",
+    "status-draft",
+    "hentry"
+  ],
+  "_hostinger_reach_plugin_has_subscription_block": false,
+  "_hostinger_reach_plugin_is_elementor": false,
+  "_links": {
+    "self": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/319",
+        "targetHints": {
+          "allow": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages"
+      }
+    ],
+    "about": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/types/page"
+      }
+    ],
+    "author": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/users/1"
+      }
+    ],
+    "replies": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/comments?post=319"
+      }
+    ],
+    "version-history": [
+      {
+        "count": 0,
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/319/revisions"
+      }
+    ],
+    "wp:attachment": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/media?parent=319"
+      }
+    ],
+    "curies": [
+      {
+        "name": "wp",
+        "href": "https://api.w.org/{rel}",
+        "templated": true
+      }
+    ]
+  }
+}

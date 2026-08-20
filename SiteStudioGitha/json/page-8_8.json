@@ -1,0 +1,106 @@
+{
+  "id": 8,
+  "date": "2025-10-29T12:10:32",
+  "date_gmt": "2025-10-29T12:10:32",
+  "guid": {
+    "rendered": "https://lightsalmon-snail-195677.hostingersite.com/?page_id=8"
+  },
+  "modified": "2025-10-29T12:10:32",
+  "modified_gmt": "2025-10-29T12:10:32",
+  "slug": "",
+  "status": "draft",
+  "type": "page",
+  "link": "https://studiogitha.com/?page_id=8",
+  "title": {
+    "rendered": "Elementor #8"
+  },
+  "content": {
+    "rendered": "",
+    "protected": false
+  },
+  "excerpt": {
+    "rendered": "",
+    "protected": false
+  },
+  "author": 1,
+  "featured_media": 0,
+  "parent": 0,
+  "menu_order": 0,
+  "comment_status": "closed",
+  "ping_status": "closed",
+  "template": "",
+  "meta": {
+    "footnotes": ""
+  },
+  "class_list": [
+    "post-8",
+    "page",
+    "type-page",
+    "status-draft",
+    "hentry"
+  ],
+  "_hostinger_reach_plugin_has_subscription_block": false,
+  "_hostinger_reach_plugin_is_elementor": false,
+  "_links": {
+    "self": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/8",
+        "targetHints": {
+          "allow": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages"
+      }
+    ],
+    "about": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/types/page"
+      }
+    ],
+    "author": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/users/1"
+      }
+    ],
+    "replies": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/comments?post=8"
+      }
+    ],
+    "version-history": [
+      {
+        "count": 1,
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/8/revisions"
+      }
+    ],
+    "predecessor-version": [
+      {
+        "id": 9,
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/8/revisions/9"
+      }
+    ],
+    "wp:attachment": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/media?parent=8"
+      }
+    ],
+    "curies": [
+      {
+        "name": "wp",
+        "href": "https://api.w.org/{rel}",
+        "templated": true
+      }
+    ]
+  }
+}

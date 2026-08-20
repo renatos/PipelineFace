@@ -32,10 +32,18 @@ from web.application.post_use_cases import (
 from web.application.pillar_use_cases import (
     ListSEOPillarsUseCase, SaveSEOPillarUseCase, DeleteSEOPillarUseCase
 )
+from web.application.seo_automation_use_cases import (
+    GetGithaContextUseCase, PrioritizeStrategiesUseCase, BuildExecutionPlanUseCase, MarkStrategyAppliedUseCase
+)
 from web.domain.entities import SEOPillar
 
 
 router = APIRouter()
+
+
+class MarkAppliedRequest(BaseModel):
+    step_indices: Optional[List[int]] = None
+    notes: Optional[str] = None
 
 
 class SEOPillarRequest(BaseModel):
@@ -133,6 +141,12 @@ delete_pillar_use_case: DeleteSEOPillarUseCase = None
 media_service: MediaStreamingService = None
 mongo_db = None
 
+# SEO Automation & Githa Context Use Cases
+get_githa_context_use_case: GetGithaContextUseCase = None
+prioritize_strategies_use_case: PrioritizeStrategiesUseCase = None
+build_execution_plan_use_case: BuildExecutionPlanUseCase = None
+mark_strategy_applied_use_case: MarkStrategyAppliedUseCase = None
+
 
 def init_routes(
     _sync_use_case, _get_strategies_use_case, _get_detail_use_case,
@@ -147,7 +161,11 @@ def init_routes(
     _run_list_posts_use_case, _run_download_pending_use_case, _run_download_single_post_use_case,
     _run_browser_automation_use_case,
     _list_pillars_use_case, _save_pillar_use_case, _delete_pillar_use_case,
-    _media_service, _mongo_db
+    _media_service, _mongo_db,
+    _get_githa_context_use_case=None,
+    _prioritize_strategies_use_case=None,
+    _build_execution_plan_use_case=None,
+    _mark_strategy_applied_use_case=None
 ):
     global sync_use_case, get_strategies_use_case, get_detail_use_case
     global toggle_step_use_case, update_status_use_case, add_comment_use_case
@@ -162,6 +180,8 @@ def init_routes(
     global run_browser_automation_use_case
     global list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case
     global media_service, mongo_db
+    global get_githa_context_use_case, prioritize_strategies_use_case
+    global build_execution_plan_use_case, mark_strategy_applied_use_case
 
     sync_use_case = _sync_use_case
     get_strategies_use_case = _get_strategies_use_case
@@ -198,6 +218,12 @@ def init_routes(
     delete_pillar_use_case = _delete_pillar_use_case
     media_service = _media_service
     mongo_db = _mongo_db
+
+    get_githa_context_use_case = _get_githa_context_use_case
+    prioritize_strategies_use_case = _prioritize_strategies_use_case
+    build_execution_plan_use_case = _build_execution_plan_use_case
+    mark_strategy_applied_use_case = _mark_strategy_applied_use_case
+
 
 
 
@@ -501,8 +527,60 @@ def add_comment(basename: str, payload: CommentRequest):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# --- Endpoints de Integração Githa Context & SEO Automation ---
+
+@router.get("/api/githa-context")
+def get_githa_context():
+    """Retorna o contexto de negócio real da clínica Studio Githa extraído do PostgreSQL."""
+    if not get_githa_context_use_case:
+        raise HTTPException(status_code=503, detail="Githa Context UseCase não inicializado.")
+    context = get_githa_context_use_case.execute()
+    return context.model_dump()
+
+
+@router.get("/api/seo/priorities")
+def get_seo_priorities(
+    status: Optional[str] = Query(None),
+    limit: int = Query(50)
+):
+    """Retorna a lista de estratégias SEO priorizadas pelo impacto no negócio do Studio Githa."""
+    if not prioritize_strategies_use_case:
+        raise HTTPException(status_code=503, detail="PrioritizeStrategiesUseCase não inicializado.")
+    items = prioritize_strategies_use_case.execute(status_filter=status, limit=limit)
+    return {"count": len(items), "priorities": [i.model_dump() for i in items]}
+
+
+@router.get("/api/seo/execution-plan/{basename}")
+def get_strategy_execution_plan(basename: str):
+    """Retorna o plano de execução enriquecido com dados do Githa para o Chrome DevTools MCP."""
+    if not build_execution_plan_use_case:
+        raise HTTPException(status_code=503, detail="BuildExecutionPlanUseCase não inicializado.")
+    try:
+        plan = build_execution_plan_use_case.execute(basename)
+        return plan.model_dump()
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/api/seo/mark-applied/{basename}")
+def mark_strategy_applied(basename: str, payload: MarkAppliedRequest):
+    """Registra a aplicação automatizada de passos de uma estratégia."""
+    if not mark_strategy_applied_use_case:
+        raise HTTPException(status_code=503, detail="MarkStrategyAppliedUseCase não inicializado.")
+    try:
+        updated = mark_strategy_applied_use_case.execute(
+            basename=basename,
+            step_indices=payload.step_indices,
+            notes=payload.notes
+        )
+        return updated.model_dump()
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/api/media/frames/{basename}/{frame_name}")
 def serve_frame_image(basename: str, frame_name: str):
+
     return media_service.serve_frame_image(basename, frame_name)
 
 

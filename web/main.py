@@ -42,7 +42,13 @@ from web.application.pillar_use_cases import (
     ListSEOPillarsUseCase, SaveSEOPillarUseCase, DeleteSEOPillarUseCase
 )
 
+from web.infrastructure.githa_repository import GithaContextRepository
+from web.application.seo_automation_use_cases import (
+    GetGithaContextUseCase, PrioritizeStrategiesUseCase, BuildExecutionPlanUseCase, MarkStrategyAppliedUseCase
+)
+
 from web.presentation.routes import router as api_router, init_routes
+
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -75,6 +81,7 @@ def create_app() -> FastAPI:
     profile_repo = MongoTargetProfileRepository(mongo_uri=MONGO_URI)
     post_repo = MongoProfilePostRepository(mongo_uri=MONGO_URI)
     pillar_repo = MongoSEOPillarRepository(mongo_uri=MONGO_URI)
+    githa_repo = GithaContextRepository()
     media_service = MediaStreamingService(OUTPUT_FRAMES_DIR)
     process_runner = AsyncProcessRunner(PROJECT_ROOT)
 
@@ -86,6 +93,12 @@ def create_app() -> FastAPI:
     list_pillars_use_case = ListSEOPillarsUseCase(pillar_repo)
     save_pillar_use_case = SaveSEOPillarUseCase(pillar_repo)
     delete_pillar_use_case = DeleteSEOPillarUseCase(pillar_repo)
+
+    # Casos de Uso de Integração Githa Context & Automação SEO
+    get_githa_context_use_case = GetGithaContextUseCase(githa_repo)
+    prioritize_strategies_use_case = PrioritizeStrategiesUseCase(mongo_repo, githa_repo, pillar_repo)
+    build_execution_plan_use_case = BuildExecutionPlanUseCase(mongo_repo, githa_repo)
+    mark_strategy_applied_use_case = MarkStrategyAppliedUseCase(mongo_repo)
 
     sync_use_case = SyncKnowledgeUseCase(
         repository=mongo_repo,
@@ -143,8 +156,13 @@ def create_app() -> FastAPI:
         run_list_posts_use_case, run_download_pending_use_case, run_download_single_post_use_case,
         run_browser_automation_use_case,
         list_pillars_use_case, save_pillar_use_case, delete_pillar_use_case,
-        media_service, mongo_repo.db
+        media_service, mongo_repo.db,
+        _get_githa_context_use_case=get_githa_context_use_case,
+        _prioritize_strategies_use_case=prioritize_strategies_use_case,
+        _build_execution_plan_use_case=build_execution_plan_use_case,
+        _mark_strategy_applied_use_case=mark_strategy_applied_use_case
     )
+
 
 
 

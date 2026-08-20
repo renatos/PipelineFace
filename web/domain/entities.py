@@ -157,3 +157,83 @@ class ProfilePost(BaseModel):
     updated_at: Optional[str] = None
     error_message: Optional[str] = None
 
+
+# --- Githa Context & SEO Automation Domain Entities ---
+
+class GithaService(BaseModel):
+    id: Optional[int] = None
+    name: str
+    price: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    description: Optional[str] = None
+    service_group: Optional[str] = None
+    active: bool = True
+    appointment_count: int = 0
+    total_revenue: float = 0.0
+
+
+class GithaProfessional(BaseModel):
+    id: Optional[int] = None
+    name: str
+    phone: Optional[str] = None
+    active: bool = True
+
+
+class GithaContext(BaseModel):
+    clinic_name: str = "Studio Githa"
+    site_url: str = "https://studiogitha.com"
+    wp_admin_url: str = "https://studiogitha.com/wp-admin"
+    address: str = "Rua Juraci, 88 - Sala 102 - Nova Suíça, Belo Horizonte - MG, CEP 30421-181"
+    phone: str = "(31) 9 9169-6979"
+    instagram_url: str = "https://www.instagram.com/studiogitha"
+    whatsapp_url: str = "https://api.whatsapp.com/send?phone=5531991696979"
+    total_services: int = 0
+    total_clients: int = 0
+    total_appointments: int = 0
+    services: List[GithaService] = Field(default_factory=list)
+    popular_services: List[GithaService] = Field(default_factory=list)
+    professionals: List[GithaProfessional] = Field(default_factory=list)
+    seasonal_trends: List[Dict[str, Any]] = Field(default_factory=list)
+    extracted_at: Optional[str] = None
+
+
+class EnrichedStep(BaseModel):
+    step_index: int
+    raw_action: str
+    action_type: str  # "browser_action" | "data_enrichable" | "llm_generatable" | "manual_only"
+    target_tool: Optional[str] = None  # "wordpress_wpadmin" | "google_search_console" | "google_my_business" | "ga4" | "bing_webmaster" | "general_browser"
+    githa_data_source: Optional[str] = None  # "services" | "popular_services" | "clinic_info" | "professionals"
+    suggested_inputs: Dict[str, Any] = Field(default_factory=dict)
+    is_completed: bool = False
+
+
+class StrategyExecutionPlan(BaseModel):
+    basename: str
+    titulo_estrategia: str
+    resumo_executivo: Optional[str] = None
+    quality_score: Optional[int] = None
+    quality_grade: Optional[str] = None
+    status: str = "pendente"
+    completed_steps: List[int] = Field(default_factory=list)
+    total_steps: int = 0
+    enriched_steps: List[EnrichedStep] = Field(default_factory=list)
+    githa_context_summary: Dict[str, Any] = Field(default_factory=dict)
+    generated_at: str
+
+
+class PrioritizedStrategyItem(BaseModel):
+    basename: str
+    titulo_estrategia: str
+    resumo_executivo: Optional[str] = None
+    quality_score: int = 0
+    quality_grade: str = "D"
+    status: str = "pendente"
+    priority_score: float = 0.0  # 0 to 100
+    priority_level: str = "baixa"  # "critica" | "alta" | "media" | "baixa"
+    matched_services: List[str] = Field(default_factory=list)
+    matched_pillars: List[str] = Field(default_factory=list)
+    completed_steps_count: int = 0
+    total_steps_count: int = 0
+    media_type: str = "video"
+
+

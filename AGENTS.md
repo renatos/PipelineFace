@@ -35,7 +35,20 @@ PipelineFace/
 │   └── main.py                    # Application Entrypoint & Dependency Injection Assembly
 ├── scraper/                       # Playwright-based Scraper Engine
 │   └── facebook_scraper.py        # Facebook profile scraper (CLI & Python API)
+├── skills/                        # Autonomous AI Agent Skills
+│   └── seo-automation/            # SEO Execution Automation Skill (Studio Githa)
+│       └── SKILL.md               # Complete execution & optimization guidelines
 ├── scripts/                       # Service Control & Utility Scripts
+│   └── SEO/                       # Dedicated SEO automation & DB query scripts
+│       ├── get_githa_services.py  # PostgreSQL Githa services & metrics
+│       ├── manage_seo_knowledge.py# MongoDB SEO strategies audit & status
+│       └── create_wp_page.py      # WordPress REST API landing page creator
+├── SiteStudioGitha/               # Local WordPress pages repository (HTML/JSON sync)
+│   ├── pages/                     # Individual editable HTML pages
+│   ├── json/                      # Raw WordPress REST API JSON payloads
+│   ├── manifest.json              # Local pages manifest & metadata
+│   ├── backup_pages.py            # Sync all pages from WP to local
+│   └── push_page.py               # Push edited HTML page back to WP
 ├── pipeline.py                    # Main 100% Python AI processing & extraction pipeline
 ├── docker-compose.yml             # Container orchestration (MongoDB, Whisper, Web App)
 └── Containerfile                  # Container build instructions
@@ -125,5 +138,37 @@ When working on this repository, AI agents MUST follow these guidelines:
 3. **Incremental Scraping (`--only-new`)**:
    - Always respect the `--only-new` flag when cataloging posts to avoid re-scanning or duplicating already processed posts.
 
-4. **Service Restart Protocol**:
+4. **SEO Implementation Context-First Rule**:
+   - Before planning or executing any SEO task, always query existing implementations (`--implemented` or `/api/seo/priorities?status=completed`) and verify existing published pages in WordPress to avoid duplicate slugs or overlapping focus keywords.
+
+5. **Service Restart Protocol**:
    - When modifying backend routes or use cases, notify the user or restart the web service using `./scripts/stop-web.sh` followed by `./scripts/start-web.sh`.
+
+---
+
+## 🧠 7. SEO Automation Skill & Helper Scripts (`skills/seo-automation/`)
+
+The repository includes a dedicated autonomous execution skill for Studio Githa SEO strategies located in [`skills/seo-automation/`](file:///home/renato/dev/PipelineFace/skills/seo-automation/):
+
+### Core Workflow:
+1. **Context-First Audit**: Research completed strategies via CLI/API and check existing WordPress pages/drafts and Google Search Console indexation to prevent duplicates.
+2. **Prioritize Pending**: Fetch top business priorities (`/api/seo/priorities?status=pending`) cross-referenced with PostgreSQL real metrics.
+3. **Load Execution Plan**: Request enriched plan (`/api/seo/execution-plan/{basename}`).
+4. **Browser Execution via Chrome DevTools MCP**:
+   - Build Dark Luxury pages on WordPress (`https://studiogitha.com/wp-admin`).
+   - Ensure Rank Math SEO Score **>= 80/100 (Verde)** with single local keyword mention in hero.
+   - Configure LocalBusiness Schema.org and request indexing in Google Search Console.
+5. **Atomic Single-Strategy Update**: Mark execution 1-by-1 (`/api/seo/mark-applied/{basename}` or CLI).
+
+### Skill Auxiliary Scripts (`scripts/SEO/`):
+
+| Script | Command | Purpose |
+| :--- | :--- | :--- |
+| **Githa PostgreSQL Services** | `python3 scripts/SEO/get_githa_services.py` | Queries real clinic services, prices, durations, revenue, and appointment counts. |
+| **Create WP Page (REST API)**| `python3 scripts/SEO/create_wp_page.py --title "..." --slug "..." --status draft` | Creates/publishes landing pages directly in WordPress via REST API with .env credentials. |
+| **List All Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --list` | Lists all cataloged SEO strategies with current status and score. |
+| **List Completed Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --implemented` | Lists only implemented strategies with audit notes and applied dates. |
+| **List Pending Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --pending` | Lists only pending strategies waiting for execution. |
+| **Inspect Strategy Details** | `python3 scripts/SEO/manage_seo_knowledge.py --detail <basename>` | Displays full steps, difficulty, estimated time, and implementation state. |
+| **Mark Strategy as Done** | `python3 scripts/SEO/manage_seo_knowledge.py --mark <basename> --steps 0,1,2,3,4 --notes "..."` | Updates a strategy's `user_implementation` status atomically (1-by-1). |
+

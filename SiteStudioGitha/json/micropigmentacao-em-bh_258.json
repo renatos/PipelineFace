@@ -1,0 +1,107 @@
+{
+  "id": 258,
+  "date": "2026-08-19T12:11:12",
+  "date_gmt": "2026-08-19T12:11:12",
+  "guid": {
+    "rendered": "https://studiogitha.com/?page_id=258"
+  },
+  "modified": "2026-08-19T23:32:05",
+  "modified_gmt": "2026-08-19T23:32:05",
+  "slug": "micropigmentacao-em-bh",
+  "status": "publish",
+  "type": "page",
+  "link": "https://studiogitha.com/micropigmentacao-em-bh/",
+  "title": {
+    "rendered": "Micropigmentação em BH: Sobrancelhas e Lábios | Studio Githa"
+  },
+  "content": {
+    "rendered": "",
+    "protected": true
+  },
+  "excerpt": {
+    "rendered": "",
+    "protected": true
+  },
+  "author": 1,
+  "featured_media": 0,
+  "parent": 0,
+  "menu_order": 0,
+  "comment_status": "closed",
+  "ping_status": "closed",
+  "template": "elementor_canvas",
+  "meta": {
+    "footnotes": ""
+  },
+  "class_list": [
+    "post-258",
+    "page",
+    "type-page",
+    "status-publish",
+    "post-password-required",
+    "hentry"
+  ],
+  "_hostinger_reach_plugin_has_subscription_block": false,
+  "_hostinger_reach_plugin_is_elementor": false,
+  "_links": {
+    "self": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/258",
+        "targetHints": {
+          "allow": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages"
+      }
+    ],
+    "about": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/types/page"
+      }
+    ],
+    "author": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/users/1"
+      }
+    ],
+    "replies": [
+      {
+        "embeddable": true,
+        "href": "https://studiogitha.com/wp-json/wp/v2/comments?post=258"
+      }
+    ],
+    "version-history": [
+      {
+        "count": 4,
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/258/revisions"
+      }
+    ],
+    "predecessor-version": [
+      {
+        "id": 313,
+        "href": "https://studiogitha.com/wp-json/wp/v2/pages/258/revisions/313"
+      }
+    ],
+    "wp:attachment": [
+      {
+        "href": "https://studiogitha.com/wp-json/wp/v2/media?parent=258"
+      }
+    ],
+    "curies": [
+      {
+        "name": "wp",
+        "href": "https://api.w.org/{rel}",
+        "templated": true
+      }
+    ]
+  }
+}
