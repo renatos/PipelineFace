@@ -172,39 +172,76 @@ WP-Admin Edit: https://studiogitha.com/wp-admin/post.php?post=254&action=edit
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
+  "@graph": [
     {
-      "@type": "Question",
-      "name": "Quanto tempo dura a Brow Lamination?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "O resultado alinhado e volumoso dura em média de 6 a 8 semanas, acompanhando o ciclo biológico natural de renovação dos pelos das sobrancelhas."
+      "@type": "Service",
+      "@id": "https://studiogitha.com/brow-lamination-em-bh/#service",
+      "name": "Brow Lamination em BH",
+      "serviceType": "Alinhamento e Volume de Sobrancelhas",
+      "description": "Técnica que reorganiza o direcionamento dos fios das sobrancelhas para um efeito encorpado, definido e natural.",
+      "url": "https://studiogitha.com/brow-lamination-em-bh/",
+      "provider": {
+        "@type": "BeautySalon",
+        "name": "Studio Githa",
+        "url": "https://studiogitha.com",
+        "telephone": "+5531991696979",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Rua Juraci, 88 - Sala 102",
+          "addressLocality": "Belo Horizonte",
+          "addressRegion": "MG",
+          "postalCode": "30421-181",
+          "addressCountry": "BR"
+        }
+      },
+      "areaServed": {
+        "@type": "City",
+        "name": "Belo Horizonte"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "120.00",
+        "priceCurrency": "BRL",
+        "availability": "https://schema.org/InStock"
       }
     },
     {
-      "@type": "Question",
-      "name": "Quem tem pouca sobrancelha pode fazer?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Com certeza! A técnica é especialmente indicada para sobrancelhas finas ou com falhas, pois redireciona os pelos existentes para cobrir os espaços vazios, dando a impressão de um volume muito maior."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "O procedimento quebra ou estraga os pelos?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Não! Nosso protocolo utiliza ativos cosméticos de alta tecnologia certificados pela Anvisa combinados com reconstrutor que protege a fibra capilar."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Qual a diferença entre Brow Lamination e Micropigmentação?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "A Brow Lamination trabalha exclusivamente com os pelos naturais através de alinhamento e tintura temporária (sem agulhas e sem pigmentação na derme), enquanto a micropigmentação é um procedimento que implanta pigmento na pele."
-      }
+      "@type": "FAQPage",
+      "@id": "https://studiogitha.com/brow-lamination-em-bh/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Quanto tempo dura a Brow Lamination?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "O resultado alinhado e volumoso dura em média de 6 a 8 semanas, acompanhando o ciclo biológico natural de renovação dos pelos das sobrancelhas."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Quem tem pouca sobrancelha pode fazer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Com certeza! A técnica é especialmente indicada para sobrancelhas finas ou com falhas, pois redireciona os pelos existentes para cobrir os espaços vazios, dando a impressão de um volume muito maior."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "O procedimento quebra ou estraga os pelos?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Não! Nosso protocolo utiliza ativos cosméticos de alta tecnologia certificados pela Anvisa combinados com reconstrutor que protege a fibra capilar."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Qual a diferença entre Brow Lamination e Micropigmentação?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A Brow Lamination trabalha exclusivamente com os pelos naturais através de alinhamento e tintura temporária (sem agulhas e sem pigmentação na derme), enquanto a micropigmentação é um procedimento que implanta pigmento na pele."
+          }
+        }
+      ]
     }
   ]
 }
