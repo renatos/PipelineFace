@@ -11,5 +11,6 @@ python-multipart
 opencv-python-headless
 pytesseract
 Pillow
+psycopg2-binary
 
 

@@ -194,6 +194,15 @@ python3 scripts/SEO/create_wp_page.py \
 # Listar todas as estratégias e status:
 python3 scripts/SEO/manage_seo_knowledge.py --list
 
+# Listar somente diretrizes permanentes (Core Standards):
+python3 scripts/SEO/manage_seo_knowledge.py --core-rules
+
+# Promover uma estratégia para Core Standard permanente:
+python3 scripts/SEO/manage_seo_knowledge.py --set-core <BASENAME> --scope "all_pages,on_page_structure"
+
+# Registrar a aplicação de um Core Standard em uma página:
+python3 scripts/SEO/manage_seo_knowledge.py --apply-core <BASENAME> --page lash-lifting-em-bh --page-id 334 --notes "Estrutura H1/H2/H3 aplicada."
+
 # Listar somente estratégias já concluídas (com notas de auditoria):
 python3 scripts/SEO/manage_seo_knowledge.py --implemented
 
@@ -203,7 +212,7 @@ python3 scripts/SEO/manage_seo_knowledge.py --pending
 # Inspecionar detalhes e passos de uma estratégia específica:
 python3 scripts/SEO/manage_seo_knowledge.py --detail <BASENAME>
 
-# Marcar uma estratégia individual como concluída (Regra 1 a 1):
+# Marcar uma estratégia individual pontual como concluída (Regra 1 a 1):
 python3 scripts/SEO/manage_seo_knowledge.py --mark post_28063324779927810 --steps 0,1,2,3,4 --notes "Página criada no WordPress com Rank Math 81/100, Schema LocalBusiness configurado e URL pronta."
 ```
 

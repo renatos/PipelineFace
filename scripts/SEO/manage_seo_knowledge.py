@@ -18,6 +18,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 MONGO_URI = os.getenv("MONGO_URI", os.getenv("MONGODB_URL", "mongodb://localhost:27017"))
@@ -136,20 +138,157 @@ def mark_in_progress(basename: str, notes: str = "Iniciando execução da estrat
     else:
         print(f"⚠️ Nenhuma estratégia encontrada ou modificada com basename: {basename}")
 
+def get_core_repo():
+    from web.infrastructure.mongo_repository import MongoCoreSEOStandardRepository
+    client = pymongo.MongoClient(MONGO_URI)
+    repo = MongoCoreSEOStandardRepository(client, DB_NAME)
+    repo.seed_defaults()
+    return repo
+
+def list_core_rules():
+    repo = get_core_repo()
+    standards = repo.list_all(apenas_ativos=False)
+
+    print(f"⭐ Total de Core Standards (Padrões Permanentes de SEO): {len(standards)}")
+    print("=" * 90)
+    for s in standards:
+        status_label = "ATIVO" if s.is_active else "INATIVO"
+        scope = ", ".join(s.rule_scope)
+        instances = s.applied_instances or []
+        
+        print(f"📌 [{status_label}] ID: {s.id:<28} | Cat: {s.category:<16} | Escopo: [{scope}]")
+        print(f"   Título: {s.title}")
+        print(f"   Descrição: {s.description}")
+        if s.checklist_items:
+            print(f"   Checklist de Aceite ({len(s.checklist_items)}):")
+            for item in s.checklist_items:
+                print(f"     [✓] {item}")
+        print(f"   Aplicações Registradas ({len(instances)}):")
+        if instances:
+            for inst in instances:
+                slug = inst.get("page_slug", "N/A")
+                dt = str(inst.get("applied_at", ""))[:10]
+                inst_notes = inst.get("notes", "")
+                pid = f" (ID {inst.get('page_id')})" if inst.get('page_id') else ""
+                print(f"     • /{slug}/{pid} ({dt}) — {inst_notes}")
+        else:
+            print("     • (Nenhuma página registrada ainda)")
+        print("-" * 90)
+
+def set_core_rule(basename_or_id: str, scope: list = None, title: str = None, category: str = "on_page_structure", notes: str = ""):
+    db = get_db()
+    repo = get_core_repo()
+    if scope is None:
+        scope = ["all_pages", "on_page_structure"]
+    
+    # 1. Verificar se existe estratégia com esse basename
+    strat = db.seo_knowledge.find_one({"basename": basename_or_id})
+    strat_title = strat.get("seo_knowledge", {}).get("titulo_estrategia") if strat else None
+    strat_desc = strat.get("seo_knowledge", {}).get("resumo_executivo") if strat else None
+
+    standard_id = basename_or_id.replace("post_", "").replace("fb_", "").replace("_", "-")
+    std_title = title or strat_title or basename_or_id
+    std_desc = notes or strat_desc or "Diretriz permanente de SEO."
+
+    from web.domain.entities import CoreSEOStandard
+    standard = CoreSEOStandard(
+        id=standard_id,
+        title=std_title,
+        category=category,
+        description=std_desc,
+        source_strategy_id=basename_or_id if strat else None,
+        rule_scope=scope,
+        checklist_items=strat.get("seo_knowledge", {}).get("passo_a_passo_detalhado", []) if strat else []
+    )
+    repo.save_or_update(standard)
+
+    # 2. Atualizar no seo_knowledge se for uma estratégia existente
+    if strat:
+        db.seo_knowledge.update_one(
+            {"basename": basename_or_id},
+            {
+                "$set": {
+                    "user_implementation.is_core_rule": True,
+                    "user_implementation.status": "core_standard",
+                    "user_implementation.rule_scope": scope,
+                    "updated_at": datetime.now().isoformat()
+                }
+            }
+        )
+
+    print(f"⭐ Padrão Permanente '{standard_id}' salvo com sucesso na collection core_seo_standards!")
+    print(f"   Título: {std_title}")
+    print(f"   Escopo: {scope}")
+
+def apply_core_rule(standard_id_or_basename: str, page_slug: str, page_id: int = None, notes: str = ""):
+    db = get_db()
+    repo = get_core_repo()
+    
+    # Resolver ID na collection core_seo_standards
+    std = repo.get_by_id(standard_id_or_basename)
+    if not std:
+        # Tentar buscar por source_strategy_id
+        doc = db.core_seo_standards.find_one({"source_strategy_id": standard_id_or_basename})
+        if doc:
+            std_id = doc["id"]
+        else:
+            std_id = standard_id_or_basename
+    else:
+        std_id = std.id
+
+    repo.record_application(std_id, page_slug=page_slug, page_id=page_id, notes=notes)
+
+    # Sincronizar no seo_knowledge caso exista a estratégia de origem
+    db.seo_knowledge.update_one(
+        {"$or": [{"basename": standard_id_or_basename}, {"basename": f"fb_{standard_id_or_basename}"}]},
+        {
+            "$set": {
+                "user_implementation.is_core_rule": True,
+                "user_implementation.status": "core_standard",
+                "updated_at": datetime.now().isoformat()
+            },
+            "$push": {
+                "user_implementation.applied_instances": {
+                    "page_slug": page_slug,
+                    "page_id": page_id,
+                    "applied_at": datetime.now().isoformat(),
+                    "notes": notes
+                }
+            }
+        }
+    )
+    print(f"✅ Aplicação do Core Standard '{std_id}' registrada na collection core_seo_standards (Página: /{page_slug}/)!")
+
 def main():
-    parser = argparse.ArgumentParser(description="Gerenciar e auditar estratégias seo_knowledge 1 a 1")
+    parser = argparse.ArgumentParser(description="Gerenciar e auditar estratégias seo_knowledge 1 a 1 e Core Standards")
     parser.add_argument("--list", action="store_true", help="Listar todas as estratégias e status")
     parser.add_argument("--implemented", action="store_true", help="Listar apenas estratégias já implementadas (status=completed)")
     parser.add_argument("--pending", action="store_true", help="Listar apenas estratégias pendentes de implementação")
-    parser.add_argument("--status", type=str, choices=["completed", "pending", "in_progress"], help="Filtrar estratégias por status")
+    parser.add_argument("--core", "--core-rules", action="store_true", dest="core_rules", help="Listar todas as Core Rules (Padrões Permanentes de SEO)")
+    parser.add_argument("--status", type=str, choices=["completed", "pending", "in_progress", "core_standard"], help="Filtrar estratégias por status")
     parser.add_argument("--detail", type=str, help="Exibir detalhes completos de uma estratégia pelo basename")
     parser.add_argument("--in-progress", type=str, dest="in_progress", help="Basename da estratégia a marcar como EM_ANDAMENTO (in_progress)")
-    parser.add_argument("--mark", type=str, help="Basename da estratégia a marcar como concluída")
+    parser.add_argument("--set-core", type=str, dest="set_core", help="Promover estratégia para Core Standard (Padrão Permanente)")
+    parser.add_argument("--apply-core", type=str, dest="apply_core", help="Registrar aplicação de uma Core Rule em uma página específica")
+    parser.add_argument("--page", type=str, help="Slug da página (ex: lash-lifting-em-bh)")
+    parser.add_argument("--page-id", type=int, help="ID da página no WordPress (ex: 334)")
+    parser.add_argument("--scope", type=str, default="all_pages,on_page_structure", help="Escopos separados por vírgula para Core Rule")
+    parser.add_argument("--mark", type=str, help="Basename da estratégia a marcar como concluída (tarefa pontual)")
     parser.add_argument("--steps", type=str, default="0,1,2,3,4", help="Índices dos passos concluídos separados por vírgula (ex: 0,1,2,3)")
     parser.add_argument("--notes", type=str, default="Otimização em andamento.", help="Notas de auditoria da implementação")
     
     args = parser.parse_args()
-    if args.list:
+    if args.core_rules:
+        list_core_rules()
+    elif args.set_core:
+        scopes = [s.strip() for s in args.scope.split(",") if s.strip()]
+        set_core_rule(args.set_core, scope=scopes, notes=args.notes)
+    elif args.apply_core:
+        if not args.page:
+            print("❌ Erro: --page é obrigatório para registrar a aplicação de uma Core Rule.")
+            sys.exit(1)
+        apply_core_rule(args.apply_core, page_slug=args.page, page_id=args.page_id, notes=args.notes)
+    elif args.list:
         list_strategies()
     elif args.implemented:
         list_strategies(status_filter="completed")

@@ -68,6 +68,8 @@ MongoDB is the primary persistence layer (`mongodb://localhost:27017`, Database:
   - **Media display rule**: the UI never serves files from `data/input/` — downloaded media is only the pipeline's input. Display uses Facebook URLs (`url`) and pipeline output frames (`/api/media/frames/...`).
 - **`app_config`**: Dynamic key-value system configuration settings.
   - Fields: `key` (unique), `group` (`pipeline`|`models`|`scraper`|`system`), `value`, `value_type` (`string`|`int`|`float`|`bool`), `label`, `description`, `editable`, `updated_at`.
+- **`core_seo_standards`**: Official canonical and evergreen SEO standards, checklists, and application history.
+  - Fields: `id` (unique slug), `title`, `category` (`on_page_structure`|`schema_org`|`geo_local`|`ai_search`|`technical`), `description`, `source_strategy_id` (optional basename reference to `seo_knowledge`), `rule_scope` (array of strings), `checklist_items` (array of strings), `validation_rules` (array of strings), `applied_instances` (array of `{page_slug, page_id, applied_at, notes}`), `is_active` (bool), `created_at`, `updated_at`.
 - **`seo_pillars`**: Taxonomy pillars for SEO classification.
   - Fields: `id` (unique slug), `titulo`, `keywords` (array of strings), `ordem`, `ativo`, `created_at`, `updated_at`.
 - **`pipeline_runs`**: Execution runs history for pipeline and scraper.
@@ -168,7 +170,10 @@ The repository includes a dedicated autonomous execution skill for Studio Githa 
 | **Githa PostgreSQL Services** | `python3 scripts/SEO/get_githa_services.py` | Queries real clinic services, prices, durations, revenue, and appointment counts. |
 | **Create WP Page (REST API)**| `python3 scripts/SEO/create_wp_page.py --title "..." --slug "..." --status draft` | Creates/publishes landing pages directly in WordPress via REST API with .env credentials. |
 | **List All Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --list` | Lists all cataloged SEO strategies with current status and score. |
-| **List Completed Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --implemented` | Lists only implemented strategies with audit notes and applied dates. |
+| **List Core Standards** | `python3 scripts/SEO/manage_seo_knowledge.py --core-rules` | Lists all permanent, evergreen SEO standards and applied pages history. |
+| **Promote to Core Standard** | `python3 scripts/SEO/manage_seo_knowledge.py --set-core <basename> --scope "..."` | Promotes an evergreen strategy to permanent Core Standard. |
+| **Register Core Rule Usage** | `python3 scripts/SEO/manage_seo_knowledge.py --apply-core <basename> --page <slug>` | Records a page implementation for a Core Standard without archiving it. |
+| **List Completed Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --implemented` | Lists only implemented one-off strategies with audit notes and applied dates. |
 | **List Pending Strategies** | `python3 scripts/SEO/manage_seo_knowledge.py --pending` | Lists only pending strategies waiting for execution. |
 | **Mark Strategy In-Progress** | `python3 scripts/SEO/manage_seo_knowledge.py --in-progress <basename> --notes "..."` | Sets a strategy's status to `in_progress` (EM_ANDAMENTO) immediately upon selection. |
 | **Inspect Strategy Details** | `python3 scripts/SEO/manage_seo_knowledge.py --detail <basename>` | Displays full steps, difficulty, estimated time, and implementation state. |

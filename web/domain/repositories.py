@@ -7,7 +7,7 @@ Contrato abstrato de persistência para as estratégias, eventos e histórico de
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 from web.domain.entities import (
-    AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar
+    AppConfig, Strategy, Comment, ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar, CoreSEOStandard
 )
 
 
@@ -170,4 +170,32 @@ class AbstractSEOPillarRepository(ABC):
     @abstractmethod
     def delete(self, pilar_id: str) -> bool:
         pass
+
+
+class AbstractCoreSEOStandardRepository(ABC):
+    @abstractmethod
+    def seed_defaults(self) -> None:
+        """Insere as regras canônicas padrão se a collection estiver vazia."""
+        pass
+
+    @abstractmethod
+    def list_all(self, category: Optional[str] = None, apenas_ativos: bool = True) -> List[CoreSEOStandard]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, standard_id: str) -> Optional[CoreSEOStandard]:
+        pass
+
+    @abstractmethod
+    def save_or_update(self, standard: CoreSEOStandard) -> CoreSEOStandard:
+        pass
+
+    @abstractmethod
+    def record_application(self, standard_id: str, page_slug: str, page_id: Optional[int] = None, notes: str = "") -> bool:
+        pass
+
+    @abstractmethod
+    def delete(self, standard_id: str) -> bool:
+        pass
+
 

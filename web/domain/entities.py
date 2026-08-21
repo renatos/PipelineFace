@@ -31,6 +31,22 @@ class SEOPillar(BaseModel):
     updated_at: Optional[str] = None
 
 
+class CoreSEOStandard(BaseModel):
+    """Diretriz ou Padrão Canônico Permanente de SEO armazenado na coleção core_seo_standards."""
+    id: str  # slug único (ex: "h1-h2-h3-headings-hierarchy")
+    title: str
+    category: str = "on_page_structure"  # "on_page_structure" | "schema_org" | "geo_local" | "ai_search" | "technical"
+    description: str
+    source_strategy_id: Optional[str] = None  # Basename da estratégia no seo_knowledge (ex: "fb_72db9d049c3689c7")
+    rule_scope: List[str] = Field(default_factory=lambda: ["all_pages"])
+    checklist_items: List[str] = Field(default_factory=list)
+    validation_rules: List[str] = Field(default_factory=list)
+    applied_instances: List[Dict[str, Any]] = Field(default_factory=list)
+    is_active: bool = True
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 class InputFile(BaseModel):
     filename: str
     type: str  # "video" | "image"
@@ -78,7 +94,10 @@ class Comment(BaseModel):
 
 
 class UserImplementation(BaseModel):
-    status: str = "pendente"  # "pendente" | "em_andamento" | "concluido"
+    status: str = "pendente"  # "pendente" | "em_andamento" | "concluido" | "core_standard"
+    is_core_rule: bool = False
+    rule_scope: List[str] = Field(default_factory=list)  # ex: ["all_pages", "on_page_structure", "schema_org"]
+    applied_instances: List[Dict[str, Any]] = Field(default_factory=list)  # [{"page_slug": "...", "applied_at": "...", "notes": "..."}]
     completed_steps: List[int] = Field(default_factory=list)
     comments: List[Comment] = Field(default_factory=list)
 

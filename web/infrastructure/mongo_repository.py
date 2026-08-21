@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 from web.domain.entities import (
     AppConfig, Strategy, InputFile, Content, SavedFrame, SEOKnowledge, UserImplementation, Comment,
-    ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar
+    ExecutionEvent, PipelineRun, TargetProfile, ProfilePost, SEOPillar, CoreSEOStandard
 )
 from web.domain.repositories import (
     AbstractAppConfigRepository, AbstractStrategyRepository, AbstractExecutionEventRepository,
     AbstractPipelineRunRepository, AbstractTargetProfileRepository, AbstractProfilePostRepository,
-    AbstractSEOPillarRepository
+    AbstractSEOPillarRepository, AbstractCoreSEOStandardRepository
 )
 
 
@@ -581,4 +581,142 @@ class MongoSEOPillarRepository(AbstractSEOPillarRepository):
 
     def delete(self, pilar_id: str) -> bool:
         res = self.collection.delete_one({"id": pilar_id})
+        return res.deleted_count > 0
+
+
+CORE_SEO_STANDARDS_DEFAULTS = [
+    {
+        "id": "h1-h2-h3-headings-hierarchy",
+        "title": "Hierarquia Semântica H1, H2 e H3",
+        "category": "on_page_structure",
+        "description": "Toda página deve conter apenas 1 H1 elegante, H2 para tópicos principais (benefícios, protocolo, dúvidas) e H3/H4 para cards e subdetalhes.",
+        "source_strategy_id": "fb_72db9d049c3689c7",
+        "rule_scope": ["all_pages", "landing_pages", "blog"],
+        "checklist_items": [
+            "Apenas um único H1 por página",
+            "H2 para seções principais (Benefícios, Protocolo, Dúvidas)",
+            "H3 nos cards de benefícios e itens do grid",
+            "H4 nas perguntas de FAQ"
+        ],
+        "validation_rules": ["h1_count == 1", "has_h2_sections", "has_h3_cards"]
+    },
+    {
+        "id": "single-regional-mention-hero",
+        "title": "Menção Regional Única no Subtítulo do Hero",
+        "category": "geo_local",
+        "description": "A palavra-chave de foco com menção local (ex: 'em BH') deve aparecer apenas 1 vez no subtítulo do hero para garantir indexação sem comprometer a sofisticação da marca Dark Luxury.",
+        "source_strategy_id": None,
+        "rule_scope": ["landing_pages", "service_pages"],
+        "checklist_items": [
+            "Menção local 'em BH' no subtítulo do hero",
+            "NÃO repetir 'em BH' em H2, botões ou FAQ",
+            "Endereço físico e bairro mantidos no rodapé"
+        ],
+        "validation_rules": ["hero_subtitle_has_local_kw", "h2_does_not_repeat_local_kw"]
+    },
+    {
+        "id": "schema-service-faq-jsonld",
+        "title": "Schema.org JSON-LD (@graph Service + FAQPage)",
+        "category": "schema_org",
+        "description": "Injeção de marcação estruturada JSON-LD com grafo contendo o serviço (preço, duração, provider BeautySalon) e FAQPage para captura de IA Search e Featured Snippets.",
+        "source_strategy_id": "fb_f2748ed982ea2df8",
+        "rule_scope": ["all_pages", "landing_pages"],
+        "checklist_items": [
+            "Script type='application/ld+json' com @graph",
+            "Provider BeautySalon com endereço oficial",
+            "FAQPage com no mínimo 3 perguntas e respostas",
+            "Preço e moeda BRL válidos do banco Githa"
+        ],
+        "validation_rules": ["has_json_ld", "has_service_schema", "has_faq_schema"]
+    },
+    {
+        "id": "rank-math-green-score",
+        "title": "Rank Math SEO Score >= 80/100 (Verde)",
+        "category": "technical",
+        "description": "Toda página publicada no WordPress deve cumprir a meta de pontuação verde no Rank Math com palavra-chave de foco definida, meta title atraente e meta description otimizada.",
+        "source_strategy_id": "post_28063324779927810",
+        "rule_scope": ["all_pages", "landing_pages"],
+        "checklist_items": [
+            "Palavra-chave de foco configurada no Rank Math",
+            "Meta Title entre 50 e 60 caracteres com número e marca",
+            "Meta Description entre 140 e 160 caracteres com CTA",
+            "Pontuação Rank Math >= 80"
+        ],
+        "validation_rules": ["rank_math_score >= 80"]
+    }
+]
+
+
+class MongoCoreSEOStandardRepository(AbstractCoreSEOStandardRepository):
+    """Implementação PyMongo do repositório de Padrões Permanentes (core_seo_standards)."""
+
+    def __init__(self, client: MongoClient, db_name: str = "pipelineface"):
+        self.db = client[db_name]
+        self.collection = self.db.core_seo_standards
+        self._ensure_indexes()
+
+    def _ensure_indexes(self) -> None:
+        try:
+            self.collection.create_index("id", unique=True)
+            self.collection.create_index("category")
+            self.collection.create_index("is_active")
+            self.collection.create_index("source_strategy_id")
+        except Exception as e:
+            logger.warning(f"Erro ao criar índices em core_seo_standards: {e}")
+
+    def seed_defaults(self) -> None:
+        now = datetime.now().isoformat()
+        for s in CORE_SEO_STANDARDS_DEFAULTS:
+            self.collection.update_one(
+                {"id": s["id"]},
+                {"$setOnInsert": {**s, "applied_instances": [], "is_active": True, "created_at": now, "updated_at": now}},
+                upsert=True
+            )
+
+    def list_all(self, category: Optional[str] = None, apenas_ativos: bool = True) -> List[CoreSEOStandard]:
+        query = {}
+        if apenas_ativos:
+            query["is_active"] = True
+        if category:
+            query["category"] = category
+        docs = list(self.collection.find(query, {"_id": 0}))
+        return [CoreSEOStandard(**d) for d in docs]
+
+    def get_by_id(self, standard_id: str) -> Optional[CoreSEOStandard]:
+        doc = self.collection.find_one({"id": standard_id}, {"_id": 0})
+        return CoreSEOStandard(**doc) if doc else None
+
+    def save_or_update(self, standard: CoreSEOStandard) -> CoreSEOStandard:
+        now = datetime.now().isoformat()
+        doc = standard.model_dump()
+        doc["updated_at"] = now
+        if not doc.get("created_at"):
+            doc["created_at"] = now
+
+        self.collection.update_one(
+            {"id": standard.id},
+            {"$set": doc},
+            upsert=True
+        )
+        return standard
+
+    def record_application(self, standard_id: str, page_slug: str, page_id: Optional[int] = None, notes: str = "") -> bool:
+        now = datetime.now().isoformat()
+        instance = {
+            "page_slug": page_slug,
+            "page_id": page_id,
+            "applied_at": now,
+            "notes": notes
+        }
+        res = self.collection.update_one(
+            {"id": standard_id},
+            {
+                "$set": {"updated_at": now},
+                "$push": {"applied_instances": instance}
+            }
+        )
+        return res.modified_count > 0 or res.matched_count > 0
+
+    def delete(self, standard_id: str) -> bool:
+        res = self.collection.delete_one({"id": standard_id})
         return res.deleted_count > 0

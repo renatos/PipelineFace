@@ -1,11 +1,23 @@
 [
   {
+    "id": 334,
+    "title": "Lash Lifting em BH: 6 Vantagens no Studio Githa",
+    "slug": "lash-lifting-em-bh",
+    "status": "publish",
+    "template": "elementor_canvas",
+    "modified": "2026-08-20T21:18:04",
+    "link": "https://studiogitha.com/lash-lifting-em-bh/",
+    "edit_link": "https://studiogitha.com/wp-admin/post.php?post=334&action=edit",
+    "html_file": "pages/lash-lifting-em-bh.html",
+    "json_file": "json/lash-lifting-em-bh_334.json"
+  },
+  {
     "id": 330,
     "title": "Studio Githa | Estética Facial, Sobrancelhas e Bem-Estar em BH",
     "slug": "inicio",
     "status": "publish",
     "template": "elementor_canvas",
-    "modified": "2026-08-20T12:34:52",
+    "modified": "2026-08-20T22:02:07",
     "link": "https://studiogitha.com/",
     "edit_link": "https://studiogitha.com/wp-admin/post.php?post=330&action=edit",
     "html_file": "pages/inicio.html",
@@ -157,12 +169,12 @@
   },
   {
     "id": 3,
-    "title": "Privacy Policy",
+    "title": "Política de Privacidade | Studio Githa",
     "slug": "privacy-policy",
-    "status": "draft",
-    "template": "",
-    "modified": "2025-10-29T11:27:45",
-    "link": "https://studiogitha.com/?page_id=3",
+    "status": "publish",
+    "template": "elementor_canvas",
+    "modified": "2026-08-20T22:01:31",
+    "link": "https://studiogitha.com/privacy-policy/",
     "edit_link": "https://studiogitha.com/wp-admin/post.php?post=3&action=edit",
     "html_file": "pages/privacy-policy.html",
     "json_file": "json/privacy-policy_3.json"
