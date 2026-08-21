@@ -1,0 +1,10 @@
+{
+  "start-mongodb": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "podman start pipelineface_mongodb >/dev/null 2>&1 || true; echo '{}'"
+      }
+    ]
+  }
+}
