@@ -391,4 +391,18 @@ WP-Admin Edit: https://studiogitha.com/wp-admin/post.php?post=330&action=edit
   ]
 }
 </script></p>
-
+<!-- Google Ads Conversion Tracking (Contato / WhatsApp) -->
+<script>
+  (function() {
+    document.addEventListener("click", function(e) {
+      var target = e.target.closest('a[href*="whatsapp.com"], a[href*="wa.me"], .nta_wa_button, .githa-cta-btn');
+      if (target && typeof gtag === "function") {
+        gtag("event", "conversion", {
+          "send_to": "AW-948660362/teHvCJuKxYIcEIrRrcQD",
+          "value": 1.0,
+          "currency": "BRL"
+        });
+      }
+    }, { capture: true });
+  })();
+</script>
