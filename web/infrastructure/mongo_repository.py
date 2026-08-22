@@ -112,7 +112,18 @@ class MongoStrategyRepository(AbstractStrategyRepository):
     ) -> List[Strategy]:
         query = {}
         if status:
-            query["user_implementation.status"] = status
+            status_aliases = {
+                "concluido": ["concluido", "completed", "concluído"],
+                "completed": ["concluido", "completed", "concluído"],
+                "em_andamento": ["em_andamento", "in_progress"],
+                "in_progress": ["em_andamento", "in_progress"],
+                "pendente": ["pendente", "pending"],
+                "pending": ["pendente", "pending"],
+            }
+            if status in status_aliases:
+                query["user_implementation.status"] = {"$in": status_aliases[status]}
+            else:
+                query["user_implementation.status"] = status
         if media_type:
             query["input_file.type"] = media_type
         if search:

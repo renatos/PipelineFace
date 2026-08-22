@@ -1,6 +1,6 @@
 # 🌐 Páginas do Site Studio Githa (`https://studiogitha.com`)
 
-> **Última sincronização:** 20/08/2026 19:02:16  
+> **Última sincronização:** 22/08/2026 10:11:12  
 > **Total de Páginas:** 15
 
 ## 📋 Índice de Páginas

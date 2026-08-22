@@ -1736,7 +1736,7 @@
 
     // Alias para o botão no Header
     function openScraperModal() {
-      openScraperModalWithMode('full_scrape');
+      openScraperModalWithMode('list_posts');
     }
 
 
@@ -1804,7 +1804,6 @@
 
     function debounceSearch() { clearTimeout(currentSearchTimeout); currentSearchTimeout = setTimeout(loadStrategies, 300); }
     function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-    function openScraperModal() { loadRecentProfiles(); document.getElementById('modal-scraper').classList.remove('hidden'); }
     function openLogsModal() { document.getElementById('modal-logs').classList.remove('hidden'); }
     function openEventsModal() { loadEvents(); document.getElementById('modal-events').classList.remove('hidden'); }
 

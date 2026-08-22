@@ -7,8 +7,14 @@ para extração do perfil e dados reais do Studio Githa.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
+    PSYCOPG2_AVAILABLE = False
 
 from web.domain.entities import GithaContext, GithaService, GithaProfessional
 from web.infrastructure.githa_config import get_githa_db_config
@@ -22,6 +28,8 @@ class GithaContextRepository:
 
     def _get_connection(self):
         """Retorna uma nova conexão com o PostgreSQL do Githa."""
+        if not PSYCOPG2_AVAILABLE:
+            raise RuntimeError("Módulo 'psycopg2' não está instalado neste ambiente.")
         return psycopg2.connect(**self.db_config)
 
     def get_services(self) -> List[GithaService]:

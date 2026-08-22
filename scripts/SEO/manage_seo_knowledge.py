@@ -33,12 +33,16 @@ def list_strategies(status_filter: str = None):
     db = get_db()
     query = {}
     if status_filter:
-        if status_filter.lower() in ["completed", "done"]:
-            query = {"user_implementation.status": "completed"}
-        elif status_filter.lower() in ["pending", "todo"]:
+        s_low = status_filter.lower().strip()
+        if s_low in ["completed", "done", "concluido", "concluído"]:
+            query = {"user_implementation.status": {"$in": ["completed", "concluido", "concluído"]}}
+        elif s_low in ["in_progress", "em_andamento", "andamento"]:
+            query = {"user_implementation.status": {"$in": ["in_progress", "em_andamento"]}}
+        elif s_low in ["pending", "todo", "pendente"]:
             query = {"$or": [
                 {"user_implementation": None},
-                {"user_implementation.status": {"$ne": "completed"}}
+                {"user_implementation.status": {"$in": ["pending", "pendente", None]}},
+                {"user_implementation.status": {"$nin": ["completed", "concluido", "concluído", "in_progress", "em_andamento"]}}
             ]}
 
     strategies = list(db.seo_knowledge.find(query, {
@@ -107,7 +111,7 @@ def mark_strategy(basename: str, step_indices: list, notes: str):
         {"basename": basename},
         {
             "$set": {
-                "user_implementation.status": "completed",
+                "user_implementation.status": "concluido",
                 "user_implementation.completed_steps": step_indices,
                 "user_implementation.comments": notes,
                 "user_implementation.applied_at": datetime.now().isoformat(),
@@ -116,7 +120,7 @@ def mark_strategy(basename: str, step_indices: list, notes: str):
         }
     )
     if res.modified_count > 0:
-        print(f"✅ Estratégia {basename} atualizada para COMPLETED com sucesso!")
+        print(f"✅ Estratégia {basename} atualizada para CONCLUIDO com sucesso!")
     else:
         print(f"⚠️ Nenhuma estratégia encontrada ou modificada com basename: {basename}")
 
@@ -126,7 +130,7 @@ def mark_in_progress(basename: str, notes: str = "Iniciando execução da estrat
         {"basename": basename},
         {
             "$set": {
-                "user_implementation.status": "in_progress",
+                "user_implementation.status": "em_andamento",
                 "user_implementation.comments": notes,
                 "user_implementation.started_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat()
@@ -134,7 +138,7 @@ def mark_in_progress(basename: str, notes: str = "Iniciando execução da estrat
         }
     )
     if res.modified_count > 0:
-        print(f"🔄 Estratégia {basename} atualizada para IN_PROGRESS (EM_ANDAMENTO) com sucesso!")
+        print(f"🔄 Estratégia {basename} atualizada para EM_ANDAMENTO com sucesso!")
     else:
         print(f"⚠️ Nenhuma estratégia encontrada ou modificada com basename: {basename}")
 

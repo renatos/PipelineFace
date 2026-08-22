@@ -4,8 +4,9 @@ Domain Entities — PipelineFace (Clean Architecture)
 Entidades puras do domínio sem dependências de frameworks (FastAPI/PyMongo).
 """
 
+from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AppConfig(BaseModel):
@@ -87,10 +88,10 @@ class SEOKnowledge(BaseModel):
 
 
 class Comment(BaseModel):
-    id: str
+    id: str = "1"
     text: str
     author: str = "Usuário"
-    created_at: str
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 class UserImplementation(BaseModel):
@@ -100,6 +101,43 @@ class UserImplementation(BaseModel):
     applied_instances: List[Dict[str, Any]] = Field(default_factory=list)  # [{"page_slug": "...", "applied_at": "...", "notes": "..."}]
     completed_steps: List[int] = Field(default_factory=list)
     comments: List[Comment] = Field(default_factory=list)
+    applied_at: Optional[str] = None
+    started_at: Optional[str] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: Any) -> str:
+        if not v:
+            return "pendente"
+        v_str = str(v).lower().strip()
+        status_map = {
+            "completed": "concluido",
+            "concluído": "concluido",
+            "concluido": "concluido",
+            "in_progress": "em_andamento",
+            "em_andamento": "em_andamento",
+            "pending": "pendente",
+            "pendente": "pendente",
+            "core_standard": "core_standard"
+        }
+        return status_map.get(v_str, v_str)
+
+    @field_validator("comments", mode="before")
+    @classmethod
+    def normalize_comments(cls, v: Any) -> List[Any]:
+        if not v:
+            return []
+        if isinstance(v, str):
+            return [{"id": "legacy", "text": v, "author": "Agente/Usuário", "created_at": datetime.now().isoformat()}]
+        if isinstance(v, list):
+            res = []
+            for idx, item in enumerate(v):
+                if isinstance(item, str):
+                    res.append({"id": str(idx), "text": item, "author": "Agente/Usuário", "created_at": datetime.now().isoformat()})
+                else:
+                    res.append(item)
+            return res
+        return []
 
 
 class Strategy(BaseModel):
