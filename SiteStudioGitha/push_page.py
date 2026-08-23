@@ -10,6 +10,7 @@ Uso:
 import os
 import re
 import sys
+import json
 import argparse
 import requests
 from dotenv import load_dotenv
@@ -31,6 +32,51 @@ def extract_meta_from_html(content: str):
                 meta[k.strip().lower()] = v.strip()
     return meta
 
+def validate_scripts_in_html(content: str) -> tuple[bool, str]:
+    """Validates all <script> tags for unclosed braces and valid JSON-LD."""
+    script_pattern = re.compile(r'<script(.*?)>(.*?)</script>', re.DOTALL | re.IGNORECASE)
+    for match in script_pattern.finditer(content):
+        attrs = match.group(1).lower()
+        script_body = match.group(2).strip()
+        if not script_body:
+            continue
+            
+        if "application/ld+json" in attrs:
+            try:
+                json.loads(script_body)
+            except json.JSONDecodeError as e:
+                return False, f"JSON-LD inválido (erro de sintaxe/chaves não fechadas): {e}"
+        else:
+            # Check balanced curly braces and parentheses
+            stack = []
+            pairs = {'}': '{', ')': '(', ']': '['}
+            in_single = False
+            in_double = False
+            escaped = False
+            for idx, c in enumerate(script_body):
+                if escaped:
+                    escaped = False
+                    continue
+                if c == '\\':
+                    escaped = True
+                    continue
+                if c == "'" and not in_double:
+                    in_single = not in_single
+                    continue
+                if c == '"' and not in_single:
+                    in_double = not in_double
+                    continue
+                if in_single or in_double:
+                    continue
+                if c in '{[(':
+                    stack.append((c, idx))
+                elif c in '}])':
+                    if not stack or pairs[c] != stack.pop()[0]:
+                        return False, f"Chave ou parêntese desbalanceado em tag <script> na posição {idx}"
+            if stack:
+                return False, f"Tag <script> possui chave ou parêntese não fechado: '{stack[-1][0]}'"
+    return True, "OK"
+
 def main():
     parser = argparse.ArgumentParser(description="Atualizar página no WordPress a partir do arquivo HTML local")
     parser.add_argument("--file", required=True, help="Caminho para o arquivo .html local")
@@ -46,6 +92,15 @@ def main():
 
     with open(args.file, "r", encoding="utf-8") as f:
         file_content = f.read()
+
+    # Pre-flight Lint Check
+    is_valid, err_msg = validate_scripts_in_html(file_content)
+    if not is_valid:
+        print(f"🛑 BLOQUEADO: Erro no Lint de Scripts/JSON-LD: {err_msg}")
+        print("Corrija o arquivo antes de enviar para o WordPress.")
+        sys.exit(1)
+    else:
+        print("✅ Pre-flight Lint OK: Todos os <script> e JSON-LD estão 100% balanceados e válidos.")
 
     header_meta = extract_meta_from_html(file_content)
     page_id = args.id or (int(header_meta.get("id")) if header_meta.get("id") else None)
