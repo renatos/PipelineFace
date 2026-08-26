@@ -194,20 +194,29 @@ WP-Admin Edit: https://studiogitha.com/wp-admin/post.php?post=260&action=edit
     }
   ]
 }
-</script></p>
-<p><!-- Google Ads Conversion Tracking (Contato / WhatsApp) --><br />
+</script>
+<!-- Google Ads & GA4 Conversion Tracking (Contato / WhatsApp) -->
 <script>
   (function() {
     document.addEventListener("click", function(e) {
       var target = e.target.closest('a[href*="whatsapp.com"], a[href*="wa.me"], .nta_wa_button, .githa-cta-btn');
       if (target && typeof gtag === "function") {
+        // 1. Google Ads Conversion
         gtag("event", "conversion", {
           "send_to": "AW-948660362/teHvCJuKxYIcEIrRrcQD",
+          "value": 1.0,
+          "currency": "BRL"
+        });
+
+        // 2. Google Analytics 4 (GA4) Key Event
+        gtag("event", "generate_lead", {
+          "event_category": "contato",
+          "event_label": (target.innerText || "Botão Agendar").trim(),
           "value": 1.0,
           "currency": "BRL"
         });
       }
     }, { capture: true });
   })();
-</script></p>
+</script>
 
